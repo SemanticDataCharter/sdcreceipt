@@ -166,6 +166,21 @@ does not.
 **Check the curve.** A signature verified against a key on an unexpected curve
 proves nothing about the party you believe signed.
 
+## Versioning
+
+MAJOR tracks the **SDC reference model**, so a `4.x.x` release targets SDC4.
+It starts at 4 rather than 0 because of that convention, not because there
+were three earlier versions. MINOR is features, PATCH is fixes. An SDC5
+reference model would make this `5.x.x`.
+
+The same scheme is used by `sdcvalidator`, `sdcgovernance` and the rest of the
+family, so a version number tells you which reference model an artifact
+targets without looking anything up.
+
+Note that the **Receipt format version is separate** and independent: a
+Receipt says `"version": "1.0"`, which is the frozen wire format, not this
+package.
+
 ## Dependencies
 
 `sdcgovernance` for canonicalization and `cryptography` for ECDSA, both
