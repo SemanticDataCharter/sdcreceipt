@@ -1,0 +1,71 @@
+name: PyPI Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  # Never publish something that has not just passed its own conformance
+  # vectors. A broken verifier on PyPI is worse than no verifier: people
+  # would trust its output.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Tests and conformance vectors
+        run: pytest tests/ -v --tb=short
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: |
+          pip install --no-cache-dir build
+          python -m build
+
+      - name: Check the tag matches the packaged version
+        # A tag that disagrees with pyproject.toml publishes a version nobody
+        # can reproduce from the repository.
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG does not match pyproject version $PKG"
+            exit 1
+          fi
+          echo "tag and package agree on $PKG"
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # OIDC for PyPI trusted publishing; no long-lived token
+
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
