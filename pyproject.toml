@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sdcreceipt"
+version = "0.1.0"
+description = "Verify and settle VSL Settlement Receipts. No account, no network for verification."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Axius SDC, Inc." }]
+keywords = ["vsl", "settlement", "receipt", "xmldsig", "rfc8785", "sdc"]
+
+dependencies = [
+    # Canonicalization, reused rather than reimplemented: a second RFC 8785
+    # implementation can disagree with the first, and the disagreement is
+    # silent. Apache-2.0, and a library dependency, not a service one.
+    "sdcgovernance>=4.2.0",
+    "cryptography>=42.0",
+]
+
+[project.optional-dependencies]
+# Schema checking is optional so `verify` works in an environment that has
+# only the crypto stack.
+schema = ["jsonschema>=4.20"]
+dev = ["pytest>=8.0", "jsonschema>=4.20"]
+
+[project.scripts]
+sdcreceipt = "sdcreceipt.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SemanticDataCharter/sdcreceipt"
+
+[tool.setuptools.packages.find]
+where = ["src"]

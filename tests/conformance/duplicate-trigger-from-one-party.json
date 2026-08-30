@@ -1,0 +1,70 @@
+{
+  "version": "1.0",
+  "canonicalization": "rfc8785",
+  "receipt_id": "k7m2p9x4qw8vzn3hjt6bcdfg",
+  "timestamp": "2026-08-30T14:22:07Z",
+  "payload_hash": "125a338bf47fed1214fd8882bec73d5ef063d6e0d385c7dd1695063e0b105cd8",
+  "payload_media_type": "application/xml",
+  "schema_ct_id": "jsi5yxnvzsmsisgn2bvelkni",
+  "schema_url": "https://sdcstudio.com/catalog/jsi5yxnvzsmsisgn2bvelkni/published.xsd",
+  "schema_hash": "d842a40bcc01ca25f96365f31c5385cd99397fb0d9938e7f81bb8d7959653e7e",
+  "rm_version": "SDC4",
+  "validation": {
+    "valid": true,
+    "structural_errors": 0,
+    "semantic_errors": 1,
+    "recovered": true,
+    "ev_injections": [
+      {
+        "xpath": "/ShippingManifest/Consignment/GrossWeight",
+        "ev_type": "NI",
+        "reason": "element absent in source; ISO 21090 no-information"
+      }
+    ],
+    "validator_version": "sdcvalidator 4.5.0"
+  },
+  "provenance_hash": "db57d562708ea0f03210d0098a5e56e5650a75c878bf6d71c3ba429a96447bb7",
+  "governance": {
+    "decision": "PERMIT",
+    "dimensions_checked": [
+      "workflow",
+      "attestation",
+      "party_role"
+    ],
+    "receipt_hash": "bcb82d7c76ad34e3ddd8beb33771947ba83335f9703e7c95877a3d7d57c5b828",
+    "receipt_url": null
+  },
+  "settlement": {
+    "condition_hash": "508ebba79151dc8a081bc920ab224cb08f5a160affc8c5e4b6b1facd9811c983",
+    "parties": [
+      "https://vendor.example/.well-known/vsl-key.json",
+      "did:web:partner.example"
+    ],
+    "triggers": [
+      {
+        "key_id": "https://vendor.example/.well-known/vsl-key.json",
+        "signature": "Ro0va7-pcjNTteKTPeN3K_q_geW2rZdDGHZhe4McusoMYJICTarGaaQ-3WaE4PV0VMCv2GUbE7NQvgDH_fcrdQ",
+        "timestamp": "2026-08-30T15:03:12Z"
+      },
+      {
+        "key_id": "did:web:partner.example",
+        "signature": "CbADRhOOUZmJBhMO0HSexfYmL1Lkga8HcO8NPKAQ8jYTw9dJxO2xTdLEEggZ05V4viFXCZKaAHPdLtjbyewKbA",
+        "timestamp": "2026-08-30T16:41:55Z"
+      },
+      {
+        "key_id": "https://vendor.example/.well-known/vsl-key.json",
+        "signature": "Ro0va7-pcjNTteKTPeN3K_q_geW2rZdDGHZhe4McusoMYJICTarGaaQ-3WaE4PV0VMCv2GUbE7NQvgDH_fcrdQ",
+        "timestamp": "2026-08-30T17:00:00Z"
+      }
+    ]
+  },
+  "previous_hash": null,
+  "receipt_hash": "604a1f6ad1bc7f9aae05598891f1c5b254ceb84f303ad402fb05284de38103fb",
+  "signatures": [
+    {
+      "key_id": "sdcstudio-signing-key-v1",
+      "alg": "ES256",
+      "sig": "rRZXFVTxMFZfsTM9I9k7QjcyBfqss4EsxC7nD07NL5ZXjOMsicARlgvW72-aYRBS-a5Cedr_dSojw8Ve82GZ8A"
+    }
+  ]
+}

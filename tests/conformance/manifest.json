@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "vectors": [
+    {
+      "name": "valid-settled",
+      "file": "valid-settled.json",
+      "expect": "valid",
+      "description": "A complete, signed, fully triggered Receipt."
+    },
+    {
+      "name": "valid-canonicalization-integral-float",
+      "file": "valid-canonicalization-integral-float.json",
+      "expect": "valid",
+      "description": "Contains a number a non-conformant serializer renders as 1.0 rather than 1 (RFC 8785 \u00a73.2.2.3). Verifies only if your canonicalization is conformant. If this is the single vector you fail, that is your bug."
+    },
+    {
+      "name": "signature-der-not-p1363",
+      "file": "signature-der-not-p1363.json",
+      "expect": "invalid",
+      "description": "A DER-encoded signature where RFC 7518 ES256 requires the P1363 r||s pair. This is the exact defect found in the XMLDSig signer. The schema catches it first, because DER is variable length and the signature pattern requires exactly 86 base64url characters. An implementation that skips schema validation must still reject it at the signature step, where the decode will fail on length.",
+      "breaks": "schema"
+    },
+    {
+      "name": "signature-over-hex-string",
+      "file": "signature-over-hex-string.json",
+      "expect": "invalid",
+      "description": "Signed over the hex text of receipt_hash rather than the 32 raw bytes it records. Both are plausible readings; only one is correct, which is why the procedure now says so explicitly.",
+      "breaks": "signature[sdcstudio-signing-key-v1]"
+    },
+    {
+      "name": "governance-binding-does-not-match",
+      "file": "governance-binding-does-not-match.json",
+      "expect": "invalid",
+      "description": "Signature and receipt_hash are both correct, but the Receipt commits to a governance Receipt other than the one held. The verdict is attested and unsupported, which is the failure the binding exists to make visible.",
+      "breaks": "governance.receipt_hash"
+    },
+    {
+      "name": "trigger-replayed-from-another-receipt",
+      "file": "trigger-replayed-from-another-receipt.json",
+      "expect": "invalid",
+      "description": "A trigger lifted from a different Receipt that shares this release condition. Identical conditions are normal for a repeat trading relationship, so an implementation that verifies the condition alone accepts last month's signature for this month's shipment.",
+      "breaks": "trigger[https://vendor.example/.well-known/vsl-key.json]"
+    },
+    {
+      "name": "tampered-payload-hash",
+      "file": "tampered-payload-hash.json",
+      "expect": "invalid",
+      "description": "payload_hash edited after signing. receipt_hash covers it, so this must be caught even without holding the payload.",
+      "breaks": "receipt_hash"
+    },
+    {
+      "name": "duplicate-trigger-from-one-party",
+      "file": "duplicate-trigger-from-one-party.json",
+      "expect": "invalid",
+      "description": "One party appears twice. Both signatures verify, so an implementation counting signatures rather than distinct parties reports more agreement than exists.",
+      "breaks": "triggers.unique"
+    },
+    {
+      "name": "missing-canonicalization-field",
+      "file": "missing-canonicalization-field.json",
+      "expect": "invalid",
+      "description": "The canonicalization field is absent, so nothing states which rules produced the hash. Committing to the scheme inside the hash is what stops a Receipt being reinterpreted under a weaker one.",
+      "breaks": "schema"
+    },
+    {
+      "name": "unsupported-alg",
+      "file": "unsupported-alg.json",
+      "expect": "invalid",
+      "description": "alg is not ES256. The JOSE name is what pins the curve and the signature encoding, so an implementation that ignores it has no basis for choosing either.",
+      "breaks": "schema"
+    }
+  ]
+}

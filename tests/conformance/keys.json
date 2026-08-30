@@ -1,0 +1,10 @@
+{
+  "$comment": "Public keys for the conformance vectors ONLY. Regenerated with the kit and used nowhere else.",
+  "issuer_keys": {
+    "sdcstudio-signing-key-v1": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMtaOl3p678UMctXNoC2z5qNIDKc3\nCrqNVpdRpNoW7L+ttBluaXPUOf6GzNxQGc+wy0m0JplRsKEac5B3sdCkqg==\n-----END PUBLIC KEY-----\n"
+  },
+  "party_keys": {
+    "https://vendor.example/.well-known/vsl-key.json": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJGuZay9GsvH4IpPWF503jJIBuObD\nGFTWexoy70yKMY0oUb3kdmIecVQNDWnzu92bkp8tSQooEgzRS9P2iVWH9w==\n-----END PUBLIC KEY-----\n",
+    "did:web:partner.example": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKDQLmJxhaFbbxFEA+ReZ7o0ASkPy\nOqn6KVsfNatx1WKYaYHT6CQkatpyDlOsSvF9KWDcvnenfxtlMuK11dx/sA==\n-----END PUBLIC KEY-----\n"
+  }
+}

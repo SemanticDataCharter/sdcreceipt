@@ -1,0 +1,21 @@
+{
+  "decision": "PERMIT",
+  "reasoning": "workflow transition permitted; attesting party in role",
+  "status_code": "urn:oasis:names:tc:xacml:1.0:status:ok",
+  "obligations": [],
+  "instance_id": "shipment-2026-08-30-0412",
+  "instance_version": "1",
+  "source_instance_id": "",
+  "source_version_id": "",
+  "timestamp": "2026-08-30T14:22:05Z",
+  "previous_hash": null,
+  "receipt_hash": "bcb82d7c76ad34e3ddd8beb33771947ba83335f9703e7c95877a3d7d57c5b828",
+  "dimensions_checked": [
+    "workflow",
+    "attestation",
+    "party_role"
+  ],
+  "errors": [],
+  "context_hash": "",
+  "canonicalization": "rfc8785"
+}
