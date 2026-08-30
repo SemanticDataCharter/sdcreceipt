@@ -160,3 +160,31 @@ def test_a_missing_key_is_reported_not_silently_skipped(kit):
 
     assert not result.ok
     assert any("no key held" in c.detail for c in result.failures)
+
+
+def test_a_missing_optional_dependency_is_reported_not_a_traceback(kit, monkeypatch):
+    """
+    ★ Found by installing from PyPI into a clean venv, which all 15 tests
+    missed because the dev environment already had jsonschema.
+
+    Recorded as a failure rather than skipped: a verifier that quietly omits a
+    requested check and still says VERIFIED is worse than one that stops,
+    because the operator believes the check happened.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def no_jsonschema(name, *args, **kwargs):
+        if name == "jsonschema":
+            raise ImportError("No module named 'jsonschema'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_jsonschema)
+
+    receipt = json.loads((KIT / "valid-settled.json").read_text())
+    result = verify(receipt, issuer_keys=kit["issuer_keys"], schema=kit["schema"])
+
+    assert not result.ok
+    detail = next(c.detail for c in result.failures if c.name == "schema")
+    assert "sdcreceipt[schema]" in detail

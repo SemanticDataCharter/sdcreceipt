@@ -41,3 +41,45 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Published conformance vectors
         run: pytest tests/test_conformance.py -v --tb=short
+
+  # ★ Install the way a counterparty does: no extras, no dev environment.
+  # The 4.0.0 release shipped a traceback on `--schema` because every test
+  # ran somewhere jsonschema already happened to be installed.
+  clean-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install with no extras
+        run: pip install .
+      - name: jsonschema must be absent, or this job proves nothing
+        run: |
+          if python -c "import jsonschema" 2>/dev/null; then
+            echo "::error::jsonschema is installed; this job cannot detect the bug it exists for"
+            exit 1
+          fi
+      - name: verify works without the optional extra
+        run: |
+          cd tests/conformance
+          python - <<'PY'
+          import json
+          d = json.load(open("keys.json"))
+          merged = {"keys": [{"key_id": k, "public_key_pem": v}
+                             for k, v in {**d["issuer_keys"], **d["party_keys"]}.items()]}
+          json.dump(merged, open("merged-keys.json", "w"))
+          PY
+          sdcreceipt verify valid-settled.json --keys merged-keys.json
+      - name: --schema reports the missing extra instead of a traceback
+        run: |
+          cd tests/conformance
+          out=$(sdcreceipt verify valid-settled.json --keys merged-keys.json \
+                  --schema settlement-receipt-1.0.schema.json 2>&1) && rc=0 || rc=$?
+          echo "$out"
+          if echo "$out" | grep -q "Traceback"; then
+            echo "::error::a missing optional dependency produced a traceback"
+            exit 1
+          fi
+          echo "$out" | grep -q "sdcreceipt\[schema\]" || {
+            echo "::error::no actionable message about the missing extra"; exit 1; }

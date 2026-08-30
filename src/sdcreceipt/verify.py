@@ -167,7 +167,21 @@ def verify(
     result = Result()
 
     if schema is not None:
-        import jsonschema
+        try:
+            import jsonschema
+        except ImportError:
+            # The caller asked for a check that cannot run. Recording it as a
+            # failure rather than skipping it: a verifier that quietly omits a
+            # requested check and still says VERIFIED is worse than one that
+            # stops, because the operator believes the check happened.
+            result.record(
+                "schema",
+                False,
+                "cannot check: jsonschema is not installed. Install it with "
+                "`pip install 'sdcreceipt[schema]'`, or omit --schema to run "
+                "the cryptographic checks alone",
+            )
+            return result
 
         errors = sorted(
             jsonschema.Draft202012Validator(schema).iter_errors(receipt),

@@ -15,7 +15,7 @@ product; the value is in it being small enough to read.
 #: release targets SDC4. It starts at 4 rather than 0 for that reason, not
 #: because there were three earlier versions. MINOR is features, PATCH is
 #: fixes. An SDC5 reference model would make this 5.x.x.
-__version__ = "4.0.0"
+__version__ = "4.0.1"
 
 from sdcreceipt.verify import Result, verify  # noqa: F401
 
