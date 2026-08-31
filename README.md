@@ -12,7 +12,7 @@ Apache-2.0.
 pip install sdcreceipt
 ```
 
-## Three verbs
+## Four verbs
 
 ```bash
 # Check a Receipt you were sent. Offline.
@@ -24,13 +24,78 @@ sdcreceipt init --key-id https://vendor.example/.well-known/vsl-key.json
 # Authorize a settlement you are a party to.
 sdcreceipt trigger receipt.json --key vsl-party.pem \
     --key-id https://vendor.example/.well-known/vsl-key.json
+
+# Ask an issuer for a Receipt. The one verb that needs an account.
+sdcreceipt settle payload.xml \
+    --party https://vendor.example/.well-known/vsl-key.json \
+    --party did:web:partner.example
 ```
+
+`settle` prompts for anything it needs and was not given. Two of its fields are
+not guessable and never were: the release condition is hashed by the issuer and
+never stored, and `current_state`/`target_state` come from a governance workflow
+defined in a schema the issuer holds, not you.
+
+If the issuer refuses the transition it answers with the ones it would have
+accepted, and `settle` prints them:
+
+```
+Governance evaluation produced no Receipt. Decision was DENY
+
+From 'draft' you can go to: review
+
+This model's workflow:
+  standard: draft -> review -> published
+```
+
+It exits 2 there, and 1 on a real failure, so a script can tell "ask again
+differently" from "something is broken".
 
 `verify` exits 0 only if every check passed, so it composes in a shell without
 anyone parsing output.
 
-There will not be a fourth verb. This is a client, not a product, and its
-value is in being small enough to read.
+That is the whole surface. This is a client, not a product, and its value is in
+being small enough to read.
+
+## Try it without reading anything
+
+```bash
+python examples/settle.py
+```
+
+One settlement end to end: two parties, two signatures, verified offline. No
+account, no network, no API key. See [`examples/`](examples/).
+
+## For an agent
+
+The same two things over MCP, in the same package:
+
+```bash
+sdcreceipt-mcp --key vsl-party.pem \
+    --key-id https://vendor.example/.well-known/vsl-key.json
+```
+
+Exposes `verify_receipt`, `sign_trigger` and `settle`. Each is advertised only
+when the server has what it needs, so a tool is never offered whose every call
+would fail.
+
+Two deliberate omissions, and they are the security posture rather than an
+oversight:
+
+- **No key generation.** A private key generated inside an agent session has no
+  clear custody story. `init` stays a human act at a terminal.
+- **No submission.** `sign_trigger` returns a signed trigger for you to submit.
+  Submitting takes a destination from the caller, and a signed trigger plus an
+  arbitrary host is the combination worth refusing.
+
+`settle` is available when the server is started with `--endpoint` and a token,
+and it is the only tool that reaches the network. The endpoint is fixed at
+start-up exactly like the key, so a caller can never redirect where a payload
+goes. **No tool takes a URL**, and that is the invariant to keep if this ever
+grows another one.
+
+The signing key is given at start-up, never in a tool call, so it does not
+travel through the conversation.
 
 ---
 
