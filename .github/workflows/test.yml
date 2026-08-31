@@ -83,3 +83,31 @@ jobs:
           fi
           echo "$out" | grep -q "sdcreceipt\[schema\]" || {
             echo "::error::no actionable message about the missing extra"; exit 1; }
+
+      # The example is the artifact that gets forwarded to a counterparty, so it
+      # has to run on the install a counterparty actually performs. A walkthrough
+      # that only works in the dev environment is worse than none: it fails in
+      # front of the one person we were trying to convince.
+      - name: The worked example runs on a bare install
+        run: |
+          out=$(python examples/settle.py) || { echo "$out"; exit 1; }
+          echo "$out"
+          echo "$out" | grep -q "VERIFIED" || {
+            echo "::error::examples/settle.py did not reach VERIFIED"; exit 1; }
+
+      # Both interfaces ship in one package precisely so they cannot drift, and
+      # the MCP server is the half no unit test would notice failing to launch.
+      # The negative check is the load-bearing one: submit_trigger is omitted so
+      # this server cannot reach the network, and that must stay true.
+      - name: The MCP server starts, and still refuses to submit
+        run: |
+          out=$(printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | sdcreceipt-mcp)
+          echo "$out"
+          echo "$out" | grep -q '"verify_receipt"' || {
+            echo "::error::verify_receipt was not advertised"; exit 1; }
+          if echo "$out" | grep -q '"submit_trigger"'; then
+            echo "::error::submit_trigger is exposed; this server must not reach the network"
+            exit 1
+          fi

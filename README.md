@@ -32,6 +32,39 @@ anyone parsing output.
 There will not be a fourth verb. This is a client, not a product, and its
 value is in being small enough to read.
 
+## Try it without reading anything
+
+```bash
+python examples/settle.py
+```
+
+One settlement end to end: two parties, two signatures, verified offline. No
+account, no network, no API key. See [`examples/`](examples/).
+
+## For an agent
+
+The same two things over MCP, in the same package:
+
+```bash
+sdcreceipt-mcp --key vsl-party.pem \
+    --key-id https://vendor.example/.well-known/vsl-key.json
+```
+
+Exposes `verify_receipt` and `sign_trigger`. Started without `--key` it runs
+verify-only and does not advertise signing.
+
+Two deliberate omissions, and they are the security posture rather than an
+oversight:
+
+- **No key generation.** A private key generated inside an agent session has no
+  clear custody story. `init` stays a human act at a terminal.
+- **No submission.** This server never reaches the network. `sign_trigger`
+  returns a signed trigger for you to submit, so the one step that can be
+  pointed at an arbitrary host stays with a human or a queue.
+
+The signing key is given at start-up, never in a tool call, so it does not
+travel through the conversation.
+
 ---
 
 ## If you were sent a Receipt
