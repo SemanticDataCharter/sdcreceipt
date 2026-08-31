@@ -38,8 +38,17 @@ is local arithmetic. Step 4 makes no request of any kind.
 ## Doing it for real
 
 Step 1 is the only part that changes. Instead of reading a fixture, the issuing
-side calls `POST /api/v1/vsl/settle` and gets back a signed Receipt. Everything
-after that is what the script does, using the same functions.
+side asks a real issuer, which is what `sdcreceipt settle` does:
+
+```bash
+sdcreceipt settle payload.xml \
+    --party https://you.example/.well-known/vsl-key.json \
+    --party did:web:them.example
+```
+
+It prompts for the states and the release condition, which are the two things
+nobody can guess, and prints the valid transitions if the issuer refuses.
+Everything after that is what the script does, using the same functions.
 
 At a terminal:
 
@@ -55,7 +64,8 @@ Or, for an agent, over MCP:
 sdcreceipt-mcp --key party.pem --key-id https://you.example/.well-known/vsl-key.json
 ```
 
-The MCP server exposes `verify_receipt` and `sign_trigger` and nothing else. It
-does not generate keys, and it never reaches the network: a signed trigger comes
-back for you to submit. Started without `--key` it runs verify-only and does not
-advertise signing at all.
+The MCP server exposes `verify_receipt` and `sign_trigger`. It does not
+generate keys, and `sign_trigger` returns a signed trigger for you to
+submit rather than submitting it. Add `--endpoint` and a token and it also
+exposes `settle`. Every destination is fixed at start-up: no tool takes a URL,
+so a caller can never choose where this connects.

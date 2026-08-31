@@ -7,10 +7,14 @@ The MCP server.
 
 Two things carry the weight here, and neither is the JSON-RPC plumbing.
 
-**The omissions have to stay omitted.** `init` and `submit_trigger` were left
-out deliberately: one generates a private key, the other reaches the network.
-Both are the kind of thing a later change adds back for convenience without
-anyone noticing, so the absence is asserted rather than assumed.
+**The omissions have to stay omitted.** `init` generates a private key and
+`submit_trigger` would take a destination from the caller. Both are the kind of
+thing a later change adds back for convenience without anyone noticing, so the
+absence is asserted rather than assumed.
+
+**No tool may take a URL.** `settle` reaches the network, so "this server makes
+no connections" is not the guarantee any more. The one that replaced it is that
+every destination is fixed at start-up, and a caller can never choose one.
 
 **The two interfaces must agree.** The CLI and the MCP server share `verify.py`
 and `party.py`, and the point of that sharing is that a Receipt gets the same
@@ -70,6 +74,8 @@ def signing_server(tmp_path):
 
     mcp_server._SIGNING_KEY_PATH = path
     mcp_server._SIGNING_KEY_ID = VENDOR
+    mcp_server._ISSUER_ENDPOINT = None
+    mcp_server._ISSUER_TOKEN = None
     yield key
     mcp_server._SIGNING_KEY_PATH = None
     mcp_server._SIGNING_KEY_ID = None
@@ -79,6 +85,8 @@ def signing_server(tmp_path):
 def verify_only_server():
     mcp_server._SIGNING_KEY_PATH = None
     mcp_server._SIGNING_KEY_ID = None
+    mcp_server._ISSUER_ENDPOINT = None
+    mcp_server._ISSUER_TOKEN = None
     yield
 
 
@@ -116,15 +124,44 @@ class TestTheOmissionsStayOmitted:
         assert "submit_trigger" not in names
         assert not any("submit" in n or "post" in n or "send" in n for n in names)
 
-    def test_the_server_module_makes_no_network_calls(self):
+    def test_no_tool_takes_a_url(self):
         """
-        Grep-level, deliberately. The claim being defended is "this server never
-        reaches the network", and the cheapest durable way to hold it is to
-        assert that nothing in the module can.
+        ★ The invariant that replaced "this server never reaches the network".
+
+        `settle` made the old claim false: it posts to an issuer. What keeps
+        that safe is not abstinence but that the destination is fixed at
+        start-up, so a caller cannot choose it. Encoded as: no tool argument
+        may be a URL, an endpoint, or a host.
+
+        This is the property to defend if anyone adds a tool. `submit_trigger`
+        was refused for failing exactly this test.
         """
-        source = pathlib.Path(mcp_server.__file__).read_text()
-        for forbidden in ("urllib", "requests", "httpx", "socket", "urlopen"):
-            assert forbidden not in source, f"{forbidden} appeared in the MCP server"
+        for tool in mcp_server.TOOLS:
+            for name, spec in tool["inputSchema"]["properties"].items():
+                assert name not in ("url", "endpoint", "host", "submit_to", "target_url"), (
+                    f"{tool['name']} takes {name!r}, which lets a caller choose "
+                    "where this server connects"
+                )
+                described = (spec.get("description") or "").lower()
+                assert "url to post" not in described
+
+    def test_the_only_destination_is_the_configured_one(self, signing_server):
+        """
+        `settle` is the sole networked tool, and it must refuse rather than
+        invent a destination when none was configured.
+        """
+        result = call(
+            "settle",
+            {
+                "payload": "<root/>",
+                "current_state": "draft",
+                "target_state": "review",
+                "condition": {"on": "x"},
+                "parties": ["https://a.example/k.json", "did:web:b.example"],
+            },
+        )
+        assert result.get("isError") is True
+        assert "without an issuer" in result["content"][0]["text"]
 
     def test_signing_reports_that_it_did_not_submit(self, signing_server, open_receipt):
         body = payload(call("sign_trigger", {"receipt": open_receipt}))
@@ -356,3 +393,167 @@ class TestStartup:
             mcp_server.main(
                 ["--key", str(tmp_path / "absent.pem"), "--key-id", VENDOR]
             )
+
+
+@pytest.fixture
+def issuing_server():
+    """A server with an issuer configured, as `main()` would leave it."""
+    mcp_server._SIGNING_KEY_PATH = None
+    mcp_server._SIGNING_KEY_ID = None
+    mcp_server._ISSUER_ENDPOINT = "https://issuer.example/api/v1/vsl/settle"
+    mcp_server._ISSUER_TOKEN = "t0ken"
+    yield
+    mcp_server._ISSUER_ENDPOINT = None
+    mcp_server._ISSUER_TOKEN = None
+
+
+SETTLE_ARGS = {
+    "payload": "<root/>",
+    "current_state": "draft",
+    "target_state": "nonsense",
+    "condition": {"on": "goods received"},
+    "parties": ["https://a.example/k.json", "did:web:b.example"],
+}
+
+
+class TestSettle:
+    """
+    ★ The verb that made `sdcreceipt` cover the whole exchange rather than
+    everything after the hard part. Before it, getting a Receipt meant
+    hand-building a POST with two fields nobody can guess.
+    """
+
+    def test_it_is_advertised_only_when_an_issuer_is_configured(self, issuing_server):
+        response = mcp_server._handle_request(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+        )
+        names = {t["name"] for t in response["result"]["tools"]}
+        assert "settle" in names
+        # No key was configured, so signing must not be offered alongside it.
+        assert "sign_trigger" not in names
+
+    def test_a_rejection_comes_back_as_a_RESULT_not_an_error(self, issuing_server, monkeypatch):
+        """
+        ★ The point of the whole change. A refused transition is recoverable:
+        the answer carries the states that would have worked. Raising would
+        route it through isError, where a model sees a sentence and not the
+        states, which is the dead end this replaced.
+        """
+        from sdcreceipt.issue import SettleRejected
+
+        def reject(*a, **kw):
+            raise SettleRejected(
+                {
+                    "error": "Decision was DENY",
+                    "current_state": "draft",
+                    "allowed_transitions": [{"target_state": "review"}],
+                    "workflow": [{"path": "standard", "states": ["draft", "review"]}],
+                    "model_defines_workflow_states": True,
+                }
+            )
+
+        monkeypatch.setattr(mcp_server, "_settle", reject)
+        result = call("settle", SETTLE_ARGS)
+
+        assert result.get("isError") is not True
+        body = payload(result)
+        assert body["rejected"] is True
+        assert body["allowed_transitions"] == [{"target_state": "review"}]
+        assert body["workflow"][0]["states"] == ["draft", "review"]
+
+    def test_a_model_without_states_is_not_blamed_on_the_state(self, issuing_server, monkeypatch):
+        from sdcreceipt.issue import SettleRejected
+
+        def reject(*a, **kw):
+            raise SettleRejected(
+                {
+                    "error": "Decision was DENY",
+                    "current_state": "draft",
+                    "allowed_transitions": [],
+                    "workflow": [],
+                    "model_defines_workflow_states": False,
+                    "hint": "This model defines no workflow states",
+                }
+            )
+
+        monkeypatch.setattr(mcp_server, "_settle", reject)
+        body = payload(call("settle", SETTLE_ARGS))
+        assert body["model_defines_workflow_states"] is False
+        assert "no workflow states" in body["hint"]
+
+    def test_success_returns_the_receipt(self, issuing_server, monkeypatch, settled_receipt):
+        monkeypatch.setattr(mcp_server, "_settle", lambda *a, **kw: settled_receipt)
+        body = payload(call("settle", SETTLE_ARGS))
+        assert body["settled"] is True
+        assert body["receipt"]["receipt_id"] == settled_receipt["receipt_id"]
+
+    def test_it_posts_only_to_the_configured_endpoint(self, issuing_server, monkeypatch, settled_receipt):
+        """The destination is not reachable from tool arguments."""
+        seen = {}
+
+        def capture(payload_text, **kw):
+            seen.update(kw)
+            return settled_receipt
+
+        monkeypatch.setattr(mcp_server, "_settle", capture)
+        call("settle", {**SETTLE_ARGS, "endpoint": "https://evil.example/steal"})
+
+        assert seen["endpoint"] == "https://issuer.example/api/v1/vsl/settle"
+        assert seen["token"] == "t0ken"
+
+    def test_a_transport_failure_is_a_tool_error(self, issuing_server, monkeypatch):
+        """Unlike a rejection, this one is not recoverable by rewording."""
+        from sdcreceipt.issue import SettleError
+
+        def boom(*a, **kw):
+            raise SettleError("Could not reach the issuer")
+
+        monkeypatch.setattr(mcp_server, "_settle", boom)
+        result = call("settle", SETTLE_ARGS)
+        assert result.get("isError") is True
+
+
+class TestIssuingRefusesToGuess:
+    def test_one_party_is_refused_before_any_round_trip(self):
+        from sdcreceipt.issue import SettleError, settle
+
+        with pytest.raises(SettleError, match="at least two"):
+            settle(
+                "<root/>",
+                endpoint="https://issuer.example/settle",
+                token="t",
+                current_state="draft",
+                target_state="review",
+                condition={"on": "x"},
+                parties=["https://a.example/k.json"],
+            )
+
+    def test_duplicate_parties_count_once(self):
+        from sdcreceipt.issue import SettleError, settle
+
+        same = "https://a.example/k.json"
+        with pytest.raises(SettleError, match="at least two"):
+            settle(
+                "<root/>",
+                endpoint="https://issuer.example/settle",
+                token="t",
+                current_state="draft",
+                target_state="review",
+                condition={"on": "x"},
+                parties=[same, same],
+            )
+
+    def test_explain_shows_the_states_a_person_needs(self):
+        from sdcreceipt.issue import SettleRejected
+
+        exc = SettleRejected(
+            {
+                "error": "Decision was DENY",
+                "current_state": "draft",
+                "allowed_transitions": [{"target_state": "review"}],
+                "workflow": [{"path": "standard", "states": ["draft", "review", "published"]}],
+            }
+        )
+        text = exc.explain()
+        assert "review" in text
+        assert "draft -> review -> published" in text

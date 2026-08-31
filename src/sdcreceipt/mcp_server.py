@@ -10,21 +10,26 @@ can already validate an instance and evaluate governance over it. It could not
 settle, which left the chain one verb short of the thing VSL exists to do. This
 closes that gap.
 
-**Two tools, not three.** The CLI has `verify`, `init` and `trigger`; this
-exposes `verify_receipt` and `sign_trigger` and stops there. The omissions are
-the design, not an oversight:
+**Three tools, and the two omissions are the design.** The CLI has `verify`,
+`init`, `settle` and `trigger`; this exposes `verify_receipt`, `sign_trigger`
+and `settle`.
 
 `init` is not exposed because it generates a private key, and a private key
 generated inside an agent session has no clear custody story. Key generation
 stays a human act at a terminal.
 
-`submit_trigger` is not exposed because it would be the one tool that reaches
-the network, and therefore the one that could be pointed at an arbitrary host.
-The SSRF guards that protect party key resolution live on the VSL server, not
-here. A signed trigger is inert and safe to hand back; posting it is a side
-effect a human or a queue should own. Decided 2026-08-31 (Tim): take the
-conservative default, because loosening this later is safe and tightening it
-after something has shipped is not.
+`submit_trigger` is not exposed. It would take a URL from the caller, making it
+the one tool that could be pointed at an arbitrary host with a signature in
+hand. The SSRF guards that protect party key resolution live on the VSL server,
+not here. A signed trigger is inert and safe to hand back; posting it is a side
+effect a human or a queue should own.
+
+★ `settle` **is** exposed, and the difference is where the destination comes
+from. Its endpoint is fixed at server start-up, exactly like the key, so the
+tool can only ever reach the issuer an operator chose. A caller cannot redirect
+it. That is what made it acceptable where `submit_trigger` is not, and it is
+the property to preserve if anyone extends this file: **no tool may take a URL
+as an argument.**
 
 **The signing key is configured at server start, never passed per call.** The
 CLI takes `--key party.pem` on each invocation, which is right for a terminal
@@ -47,6 +52,7 @@ from typing import Any
 
 from sdcreceipt import __version__
 from sdcreceipt.party import PartyError, load_key_set, load_private_key, sign_trigger
+from sdcreceipt.issue import SettleError, SettleRejected, settle as _settle
 from sdcreceipt.verify import verify
 
 JSONRPC_VERSION = "2.0"
@@ -59,9 +65,12 @@ SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-11-25")
 SERVER_NAME = "sdcreceipt"
 SERVER_VERSION = __version__
 
-#: Set once by `main()` from --key/--key-id, never from tool arguments.
+#: Set once by `main()`, never from tool arguments. The key never travels
+#: through the conversation, and the endpoint cannot be redirected by a caller.
 _SIGNING_KEY_PATH: Path | None = None
 _SIGNING_KEY_ID: str | None = None
+_ISSUER_ENDPOINT: str | None = None
+_ISSUER_TOKEN: str | None = None
 
 
 TOOLS = [
@@ -113,8 +122,7 @@ TOOLS = [
             "before either party signs, so parties can sign alone and in any "
             "order while the signature cannot be replayed into another "
             "settlement. Returns the signed trigger WITHOUT submitting it: "
-            "this server never reaches the network. Hand the result to whoever "
-            "owns submission."
+            "submission is not exposed here. Hand the result to whoever owns it."
         ),
         "inputSchema": {
             "type": "object",
@@ -133,6 +141,58 @@ TOOLS = [
                 },
             },
             "required": ["receipt"],
+        },
+    },
+    {
+        "name": "settle",
+        "description": (
+            "Ask the configured VSL issuer to validate, govern, attest and sign "
+            "one exchange, returning a Settlement Receipt. This is the one tool "
+            "here that needs an account, and it posts only to the endpoint this "
+            "server was started with. If the transition is refused, the result "
+            "carries the transitions that would have been accepted and the "
+            "model's full workflow, so a second attempt can be informed rather "
+            "than guessed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "payload": {
+                    "type": "string",
+                    "description": "The SDC4 XML instance to settle, as text.",
+                },
+                "current_state": {
+                    "type": "string",
+                    "description": "The workflow state the payload is in.",
+                },
+                "target_state": {
+                    "type": "string",
+                    "description": "The state being transitioned to.",
+                },
+                "condition": {
+                    "type": "object",
+                    "description": (
+                        "The release condition. The issuer hashes it and never "
+                        "stores it, so it may hold terms neither party wants "
+                        "published."
+                    ),
+                },
+                "parties": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 2,
+                    "description": (
+                        "At least two key_id URIs, each controlled by its party "
+                        "(https://... or did:web:...). That control is what lets "
+                        "a verifier check a signature without asking the issuer."
+                    ),
+                },
+                "previous_receipt_id": {
+                    "type": "string",
+                    "description": "Optional. Chain onto an earlier settlement.",
+                },
+            },
+            "required": ["payload", "current_state", "target_state", "condition", "parties"],
         },
     },
 ]
@@ -192,9 +252,47 @@ def _handle_sign_trigger(args: dict[str, Any]) -> Any:
     }
 
 
+def _handle_settle(args: dict[str, Any]) -> Any:
+    if not _ISSUER_ENDPOINT or not _ISSUER_TOKEN:
+        raise SettleError(
+            "This server was started without an issuer, so it can verify and "
+            "sign but not settle. Restart it with --endpoint <url> --token <t>."
+        )
+
+    try:
+        receipt = _settle(
+            args["payload"],
+            endpoint=_ISSUER_ENDPOINT,
+            token=_ISSUER_TOKEN,
+            current_state=args["current_state"],
+            target_state=args["target_state"],
+            condition=args["condition"],
+            parties=list(args["parties"]),
+            previous_receipt_id=args.get("previous_receipt_id", ""),
+        )
+    except SettleRejected as exc:
+        # ★ Returned as a result rather than raised. This is the recoverable
+        # failure: the caller asked for a transition that does not exist, and
+        # the answer contains the ones that do. Raising would send it through
+        # the isError path, where a model sees a sentence and not the states.
+        return {
+            "settled": False,
+            "rejected": True,
+            "error": str(exc),
+            "current_state": exc.current_state,
+            "allowed_transitions": exc.allowed,
+            "workflow": exc.workflow,
+            "model_defines_workflow_states": exc.defines_states,
+            "hint": exc.hint,
+        }
+
+    return {"settled": True, "receipt": receipt}
+
+
 TOOL_HANDLERS = {
     "verify_receipt": _handle_verify_receipt,
     "sign_trigger": _handle_sign_trigger,
+    "settle": _handle_settle,
 }
 
 
@@ -242,7 +340,8 @@ def _handle_request(request: dict) -> dict | None:
                     "Verify and settle VSL Settlement Receipts. `verify_receipt` "
                     "needs no network and no account. `sign_trigger` signs with "
                     "the key this server was started with and returns the trigger "
-                    "unsubmitted; this server never reaches the network. "
+                    "unsubmitted. `settle`, when configured, posts only to the "
+                    "issuer this server was started with. No tool takes a URL. "
                     + (
                         f"Signing is available as {_SIGNING_KEY_ID}."
                         if can_sign
@@ -257,9 +356,13 @@ def _handle_request(request: dict) -> dict | None:
         return None
 
     elif method == "tools/list":
-        # A server with no key advertises only what it can actually do, rather
-        # than offering a tool whose every call would fail.
-        tools = TOOLS if _SIGNING_KEY_PATH is not None else [TOOLS[0]]
+        # A server advertises only what it can actually do, rather than
+        # offering tools whose every call would fail on missing configuration.
+        tools = [TOOLS[0]]
+        if _SIGNING_KEY_PATH is not None:
+            tools.append(TOOLS[1])
+        if _ISSUER_ENDPOINT and _ISSUER_TOKEN:
+            tools.append(TOOLS[2])
         return _jsonrpc_response(req_id, {"tools": tools})
 
     elif method == "tools/call":
@@ -330,7 +433,7 @@ def main(argv: list[str] | None = None) -> None:
     """Entry point for `sdcreceipt-mcp`."""
     import argparse
 
-    global _SIGNING_KEY_PATH, _SIGNING_KEY_ID
+    global _SIGNING_KEY_PATH, _SIGNING_KEY_ID, _ISSUER_ENDPOINT, _ISSUER_TOKEN
 
     parser = argparse.ArgumentParser(
         prog="sdcreceipt-mcp",
@@ -348,6 +451,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--key-id",
         help="The party key_id this server signs as: a URI you control.",
+    )
+    parser.add_argument(
+        "--endpoint",
+        help=(
+            "VSL issuer settle URL. Fixed here rather than taken per call so a "
+            "caller cannot redirect where a payload is sent. Omit to run "
+            "without the settle tool."
+        ),
+    )
+    parser.add_argument(
+        "--token",
+        help="API token for the issuer; or set SDCRECEIPT_TOKEN.",
     )
     args = parser.parse_args(argv)
 
@@ -367,6 +482,20 @@ def main(argv: list[str] | None = None) -> None:
             parser.error(str(exc))
         _SIGNING_KEY_PATH = args.key
         _SIGNING_KEY_ID = args.key_id
+
+    if args.endpoint:
+        import os
+
+        token = args.token or os.environ.get("SDCRECEIPT_TOKEN", "")
+        if not token:
+            parser.error(
+                "--endpoint needs a token: pass --token or set SDCRECEIPT_TOKEN. "
+                "Issuing is the one thing here that needs an account."
+            )
+        _ISSUER_ENDPOINT = args.endpoint
+        _ISSUER_TOKEN = token
+    elif args.token:
+        parser.error("--token without --endpoint has nothing to authenticate to.")
 
     run_stdio()
 
