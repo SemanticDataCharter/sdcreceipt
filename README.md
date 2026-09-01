@@ -184,6 +184,14 @@ them over HTTPS only, only for identifiers already recorded in a Receipt you
 trust, and keep a copy — a party who later loses a domain must not be able to
 change what their old signatures mean.
 
+Supply them, too. Party keys are optional in the sense that the issuer
+signature and the payload hash can be checked without them, and **not** in the
+sense that a settled Receipt means anything without them. Whether every party
+triggered is a claim about authorization, so with no key to check a signature
+against, `settlement.complete` is recorded as unestablished rather than passed
+and the Receipt does not verify. Before 4.2.1 it passed on a comparison of
+`key_id` strings alone, which reported VERIFIED over fabricated triggers.
+
 ---
 
 ## Conformance
@@ -191,7 +199,7 @@ change what their old signatures mean.
 `tests/conformance/` ships the issuer's published vectors, and the suite runs
 this implementation against them.
 
-Ten vectors. **Every invalid one encodes a defect that was actually made**,
+Eleven vectors. **Every invalid one encodes a defect that was actually made**,
 not a hypothetical: a DER signature where ES256 requires P1363, a signature
 over the hex text of `receipt_hash` rather than its raw bytes, a governance
 binding that does not match the evidence held, a trigger replayed from another

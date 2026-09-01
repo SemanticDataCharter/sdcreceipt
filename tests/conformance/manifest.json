@@ -68,6 +68,14 @@
       "expect": "invalid",
       "description": "alg is not ES256. The JOSE name is what pins the curve and the signature encoding, so an implementation that ignores it has no basis for choosing either.",
       "breaks": "schema"
+    },
+    {
+      "name": "triggers-forged-no-party-keys",
+      "file": "triggers-forged-no-party-keys.json",
+      "expect": "invalid",
+      "description": "Every trigger signature is well formed and wrong, and the verifier is run WITHOUT party keys. The parties and trigger key_ids still match as sets, so a verifier that decides settlement completeness by comparing strings reports VERIFIED over fabricated authorization. Completeness is a claim about authorization, so with no key to check against it must be recorded as unestablished rather than passed. Regression vector for the defect found in 4.2.0.",
+      "breaks": "settlement.complete",
+      "withhold": ["party_keys"]
     }
   ]
 }

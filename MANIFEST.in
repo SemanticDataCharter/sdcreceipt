@@ -1,0 +1,10 @@
+# The conformance kit is the point of the package, not a development detail:
+# it is what lets somebody who was not here re-run the checks against their own
+# implementation. setuptools picks up tests/*.py on its own and leaves the
+# vectors behind, so an unpacked sdist carried the test that reads them and not
+# the files it reads. Named explicitly here so that stays fixed.
+include LICENSE
+include README.md
+recursive-include tests *.py
+recursive-include tests/conformance *.json
+recursive-include tests/conformance *.xml

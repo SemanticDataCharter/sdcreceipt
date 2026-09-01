@@ -38,6 +38,14 @@ through the conversation and whatever records it. Binding the key to the server
 process at launch keeps it out of the transcript, and means an operator decides
 once which identity this server can sign as.
 
+★ **The identity is bound at start-up too, not only the key material.** Until
+4.2.1 `sign_trigger` took an optional `key_id` argument that overrode
+`--key-id`, so a caller could choose which listed party this server signed as
+while the key stayed server-side. The key never travelled; the asserted
+identity did, which is the same defect one level up. `key_id` is no longer an
+input: a caller may not select the identity, and passing a different one is
+refused rather than quietly honoured.
+
 Reuse, do not reimplement: every tool calls the same functions the CLI calls. If
 the two interfaces ever produce different bytes for one Receipt, the product is
 broken.
@@ -117,12 +125,15 @@ TOOLS = [
     {
         "name": "sign_trigger",
         "description": (
-            "Sign a trigger for a settlement, using the key this server was "
-            "started with. Signs {condition_hash, receipt_id}, which is fixed "
-            "before either party signs, so parties can sign alone and in any "
-            "order while the signature cannot be replayed into another "
-            "settlement. Returns the signed trigger WITHOUT submitting it: "
-            "submission is not exposed here. Hand the result to whoever owns it."
+            "Sign a trigger for a settlement, as the single identity this "
+            "server was started with. Signs {condition_hash, receipt_id}, "
+            "which is fixed before either party signs, so parties can sign "
+            "alone and in any order while the signature cannot be replayed "
+            "into another settlement. The identity is not selectable per call: "
+            "it is whichever --key-id the operator configured, and it must be "
+            "one of the Receipt's listed parties. Returns the signed trigger "
+            "WITHOUT submitting it: submission is not exposed here. Hand the "
+            "result to whoever owns it."
         ),
         "inputSchema": {
             "type": "object",
@@ -131,16 +142,9 @@ TOOLS = [
                     "type": "object",
                     "description": "The Receipt whose settlement is being triggered.",
                 },
-                "key_id": {
-                    "type": "string",
-                    "description": (
-                        "Optional. The party key_id to sign as. Defaults to the "
-                        "--key-id this server was started with. Must be one of "
-                        "the Receipt's listed parties."
-                    ),
-                },
             },
             "required": ["receipt"],
+            "additionalProperties": False,
         },
     },
     {
@@ -232,10 +236,23 @@ def _handle_sign_trigger(args: dict[str, Any]) -> Any:
             "but not sign. Restart it with --key <path> --key-id <uri>."
         )
 
-    key_id = args.get("key_id") or _SIGNING_KEY_ID
+    key_id = _SIGNING_KEY_ID
     if not key_id:
         raise PartyError(
-            "No key_id. Pass one, or start the server with --key-id <uri>."
+            "This server has a key but no identity. Restart it with "
+            "--key <path> --key-id <uri>."
+        )
+
+    # Refused rather than ignored. A caller that believed it chose the signer
+    # should be told it did not, and a caller that did not expect to send this
+    # at all is worth surfacing: on this surface it is an attempt to select an
+    # identity, which is the operator's decision and is made once, at start-up.
+    asked = args.get("key_id")
+    if asked is not None and asked != key_id:
+        raise PartyError(
+            f"This server signs as {key_id} and the identity is not selectable "
+            f"per call, so it will not sign as {asked}. Start a second server "
+            "with --key-id if you hold that party's key."
         )
 
     key = load_private_key(_SIGNING_KEY_PATH)

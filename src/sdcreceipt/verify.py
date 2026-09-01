@@ -278,14 +278,30 @@ def verify(
             else "a party appears more than once, overstating agreement",
         )
 
-    complete = bool(parties) and {t.get("key_id") for t in triggers} >= set(parties)
-    result.record(
-        "settlement.complete",
-        complete,
-        "every listed party has triggered"
-        if complete
-        else f"awaiting {sorted(set(parties) - {t.get('key_id') for t in triggers})}",
-    )
+    if party_keys is None and triggers:
+        # `settlement.complete` is a claim about authorization, not about which
+        # strings appear in the document. With no party keys, not one trigger
+        # signature was checked, so the claim cannot be established: a Receipt
+        # carrying fabricated triggers would otherwise reach VERIFIED on a set
+        # comparison alone. Same principle as the schema check above. A
+        # verifier that quietly omits a check and still says VERIFIED is worse
+        # than one that stops, because the operator believes the check ran.
+        result.record(
+            "settlement.complete",
+            False,
+            "cannot establish: no party keys were supplied, so no trigger "
+            "signature was checked. Pass the parties' published keys in "
+            "--keys, or read this Receipt as unsettled",
+        )
+    else:
+        complete = bool(parties) and {t.get("key_id") for t in triggers} >= set(parties)
+        result.record(
+            "settlement.complete",
+            complete,
+            "every listed party has triggered"
+            if complete
+            else f"awaiting {sorted(set(parties) - {t.get('key_id') for t in triggers})}",
+        )
 
     if governance_receipt is not None:
         expected = receipt.get("governance", {}).get("receipt_hash")
