@@ -66,6 +66,18 @@ def issuer_key_document():
 
 
 @pytest.fixture
+def party_key_document():
+    """The party keys, in the same published document shape."""
+    keys = json.loads((KIT / "keys.json").read_text())
+    return {
+        "keys": [
+            {"key_id": k, "public_key_pem": v}
+            for k, v in keys["party_keys"].items()
+        ]
+    }
+
+
+@pytest.fixture
 def signing_server(tmp_path):
     """A server configured with a key, as `main()` would leave it."""
     key = generate_key()
@@ -183,6 +195,31 @@ class TestTheKeyIsNotTakenFromTheCaller:
             assert "key_path" not in props
             assert "private_key" not in props
 
+    def test_no_tool_lets_the_caller_choose_an_identity(self):
+        """
+        Regression for the 4.2.0 defect.
+
+        The key never travelled through the conversation, but until 4.2.1 the
+        identity did: `sign_trigger` took an optional `key_id` that overrode
+        `--key-id`, so a session caller could pick which listed party this
+        server signed as.
+        """
+        for tool in mcp_server.TOOLS:
+            if tool["name"] == "sign_trigger":
+                assert "key_id" not in tool["inputSchema"]["properties"]
+
+    def test_signing_refuses_a_caller_supplied_identity(self, signing_server, open_receipt):
+        result = call("sign_trigger", {"receipt": open_receipt, "key_id": PARTNER})
+        assert result.get("isError") is True
+        assert "not selectable" in result["content"][0]["text"]
+
+    def test_signing_ignores_nothing_and_still_signs_as_configured(
+        self, signing_server, open_receipt
+    ):
+        """A caller passing the configured identity is not an attempt to switch."""
+        body = payload(call("sign_trigger", {"receipt": open_receipt, "key_id": VENDOR}))
+        assert body["trigger"]["key_id"] == VENDOR
+
     def test_signing_uses_the_configured_key(self, signing_server, open_receipt):
         body = payload(call("sign_trigger", {"receipt": open_receipt}))
         assert body["trigger"]["key_id"] == VENDOR
@@ -201,15 +238,42 @@ class TestTheKeyIsNotTakenFromTheCaller:
 
 
 class TestVerify:
-    def test_a_valid_receipt_verifies(self, verify_only_server, settled_receipt, issuer_key_document):
+    def test_a_valid_receipt_verifies(
+        self, verify_only_server, settled_receipt, issuer_key_document, party_key_document
+    ):
+        body = payload(
+            call(
+                "verify_receipt",
+                {
+                    "receipt": settled_receipt,
+                    "issuer_keys": issuer_key_document,
+                    "party_keys": party_key_document,
+                },
+            )
+        )
+        assert body["verified"] is True
+        assert body["failures"] == []
+
+    def test_a_settled_receipt_is_not_verified_without_party_keys(
+        self, verify_only_server, settled_receipt, issuer_key_document
+    ):
+        """
+        Regression for the 4.2.0 defect.
+
+        Until 4.2.1 this call returned ``verified: true`` alongside
+        ``trigger_signatures_checked: false``, because settlement completeness
+        was decided by comparing key_id strings rather than by checking a
+        signature. An operator, or a model, acts on ``verified``.
+        """
         body = payload(
             call(
                 "verify_receipt",
                 {"receipt": settled_receipt, "issuer_keys": issuer_key_document},
             )
         )
-        assert body["verified"] is True
-        assert body["failures"] == []
+        assert body["trigger_signatures_checked"] is False
+        assert body["verified"] is False
+        assert any("settlement.complete" in f for f in body["failures"])
 
     def test_a_tampered_receipt_fails(self, verify_only_server, settled_receipt, issuer_key_document):
         settled_receipt["payload_hash"] = "f" * 64

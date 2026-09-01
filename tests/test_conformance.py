@@ -43,19 +43,28 @@ def kit():
     }
 
 
-def run(kit, filename):
-    return verify(
-        json.loads((KIT / filename).read_text()),
-        issuer_keys=kit["issuer_keys"],
-        party_keys=kit["party_keys"],
-        schema=kit["schema"],
-        governance_receipt=kit["governance"],
-        payload=kit["payload"],
-    )
+def run(kit, filename, withhold=()):
+    """
+    ``withhold`` names arguments the caller deliberately does not supply.
+
+    Every vector used to run with the full key set, which is why the 4.2.0
+    trigger defect shipped: the one arrangement that broke it, a settled
+    Receipt verified without party keys, could not be expressed here.
+    """
+    args = {
+        "issuer_keys": kit["issuer_keys"],
+        "party_keys": kit["party_keys"],
+        "schema": kit["schema"],
+        "governance_receipt": kit["governance"],
+        "payload": kit["payload"],
+    }
+    for name in withhold:
+        args[name] = None
+    return verify(json.loads((KIT / filename).read_text()), **args)
 
 
 def test_the_kit_is_present(kit):
-    assert len(kit["manifest"]["vectors"]) == 10
+    assert len(kit["manifest"]["vectors"]) == 11
 
 
 def test_every_vector_behaves_as_the_manifest_says(kit):
@@ -69,7 +78,7 @@ def test_every_vector_behaves_as_the_manifest_says(kit):
     problems = []
 
     for entry in kit["manifest"]["vectors"]:
-        result = run(kit, entry["file"])
+        result = run(kit, entry["file"], entry.get("withhold", ()))
         failed = {c.name for c in result.failures}
 
         if entry["expect"] == "valid":
