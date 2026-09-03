@@ -216,6 +216,30 @@ It is *not* an independent re-derivation: this implementation and the issuer's
 share design and history. The vectors are most valuable to someone writing a
 verifier from the specification alone, which is what they are published for.
 
+**The canonicalization underneath them is a different case, and it has been
+checked against an independent implementation.** Every hash in a Receipt is
+taken over RFC 8785 canonical bytes, so agreement on canonicalization is what
+the rest of the verification rests on. In September 2026 that agreement was
+tested in both directions with the MTCP project (Ahmad Abby), which implements
+RFC 8785 using Trail of Bits `rfc8785` rather than `sdcgovernance`:
+
+- MTCP's published vectors were run against `sdcgovernance.jcs`. Byte-for-byte
+  agreement, with self-consistent SHA-256 values.
+- The 21 vectors in `sdcgovernance/test-vectors/rfc8785-canonicalization.json`
+  were run against MTCP's implementation. Zero disagreements, including the
+  edge set: negative zero, subnormals, the 1e21 fixed-to-exponential boundary,
+  C0 controls as lowercase `\u00xx`, unescaped solidus, an astral-plane
+  character, and key ordering across a UTF-16 surrogate pair.
+
+Those 21 were cross-checked against Node.js before publication and MTCP's run
+on Python, so the two implementations agree **in two languages**. That is not
+a claim either project could make about itself, and it is the reason to prefer
+it over a second opinion from the same lineage.
+
+It does not make the Receipt vectors above independent. It means that when
+they disagree with your implementation, the disagreement is about the Receipt
+rules and not about the bytes underneath them.
+
 ## Building your own
 
 You do not have to use this tool, and the specification does not depend on it.
