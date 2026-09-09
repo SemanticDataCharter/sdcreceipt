@@ -223,18 +223,33 @@ the rest of the verification rests on. In September 2026 that agreement was
 tested in both directions with the MTCP project (Ahmad Abby), which implements
 RFC 8785 using Trail of Bits `rfc8785` rather than `sdcgovernance`:
 
-- MTCP's published vectors were run against `sdcgovernance.jcs`. Byte-for-byte
-  agreement, with self-consistent SHA-256 values.
+- MTCP's five published vectors were run against `sdcgovernance.jcs`.
+  Byte-for-byte agreement on the canonical string and on SHA-256, for every
+  vector. The set is a clean regeneration published 9 September 2026, carrying
+  synthetic values in the real schema: `audit_record`, `evaluation_summary`,
+  `score_record`, `sensor_calibration` and `arabic_content`. It **supersedes**
+  the four-vector set of 1 September, and the field carrying the canonical form
+  was renamed from `canonical_hex` to `output`, so a runner written against the
+  earlier set needs updating.
 - The 21 vectors in `sdcgovernance/test-vectors/rfc8785-canonicalization.json`
   were run against MTCP's implementation. Zero disagreements, including the
   edge set: negative zero, subnormals, the 1e21 fixed-to-exponential boundary,
   C0 controls as lowercase `\u00xx`, unescaped solidus, an astral-plane
   character, and key ordering across a UTF-16 surrogate pair.
+- MTCP publishes a conformance run of **19 pure RFC 8785 tests** against the
+  cyberphone Appendix G reference vectors: the six official vectors plus hex
+  verification, ten hard-error rejections (NaN, infinities, integers beyond
+  2^53, non-JSON types), a number-formatting case, an integer boundary case,
+  and a Node.js differential over 2011 IEEE-754 patterns with zero
+  disagreements.
 
-Those 21 were cross-checked against Node.js before publication and MTCP's run
-on Python, so the two implementations agree **in two languages**. That is not
-a claim either project could make about itself, and it is the reason to prefer
-it over a second opinion from the same lineage.
+Both sides ran a Node.js differential independently, so the number formatting
+is checked against the JS engine rather than reimplemented. RFC 8785 §3.2.2.3
+adopts ECMAScript `Number::toString` verbatim, which makes the engine the
+reference for the part that actually goes wrong. Three implementations across
+two languages, no disagreements. That is not a claim either project could make
+about itself, and it is the reason to prefer it over a second opinion from the
+same lineage.
 
 It does not make the Receipt vectors above independent. It means that when
 they disagree with your implementation, the disagreement is about the Receipt
