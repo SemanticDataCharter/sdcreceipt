@@ -37,6 +37,30 @@ class SettleError(Exception):
     """Issuing failed for a reason that is not a governance rejection."""
 
 
+def check_endpoint(url: str, *, what: str = "endpoint") -> str:
+    """
+    Refuse to send a token, or a signature, anywhere but over HTTPS.
+
+    ★ `--endpoint http://…` would put the API token on the wire in clear
+    (Lee, F-07), and a typo is the likeliest way to get there. Loopback is
+    the one exception, because a local issuer under development has no
+    certificate and no wire.
+    """
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    if parts.scheme == "https" and host:
+        return url
+    if parts.scheme == "http" and host in ("localhost", "127.0.0.1", "::1"):
+        return url
+    raise SettleError(
+        f"Refusing {what} {url!r}: it must be an https:// URL (or http:// on "
+        "localhost for a local issuer). Anything sent to it carries a token or "
+        "a signature, and a plaintext hop discloses it."
+    )
+
+
 class SettleRejected(SettleError):
     """
     The issuer refused the transition, and said what it would have accepted.
@@ -115,6 +139,8 @@ def settle(
             "Each is a key_id URI that party controls, which is what lets a "
             "verifier check their signature without asking us."
         )
+
+    endpoint = check_endpoint(endpoint)
 
     body = {
         "payload": payload,

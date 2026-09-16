@@ -202,19 +202,38 @@ TOOLS = [
 ]
 
 
+def _require_object(args: dict[str, Any], name: str, *, optional: bool = False) -> Any:
+    """
+    A tool argument that must be a JSON object, checked before anything runs.
+
+    ★ Tool arguments are attacker-reachable input. In 4.2.1 a string where an
+    object was expected reached `verify()` and surfaced as a Python exception
+    text (Lee, F-03); the shape is checked here so the answer is a sentence
+    about the argument, and `verify()` checks the Receipt's own shape again.
+    """
+    value = args.get(name)
+    if value is None and optional:
+        return None
+    if not isinstance(value, dict):
+        raise PartyError(f"`{name}` must be a JSON object.")
+    return value
+
+
 def _handle_verify_receipt(args: dict[str, Any]) -> Any:
-    receipt = args["receipt"]
-    issuer_keys = load_key_set(args["issuer_keys"])
+    if not isinstance(args, dict):
+        raise PartyError("arguments must be a JSON object.")
+    receipt = _require_object(args, "receipt")
+    issuer_keys = load_key_set(_require_object(args, "issuer_keys"))
 
     party_keys = None
     if args.get("party_keys"):
-        party_keys = load_key_set(args["party_keys"])
+        party_keys = load_key_set(_require_object(args, "party_keys"))
 
     result = verify(
         receipt,
         issuer_keys=issuer_keys,
         party_keys=party_keys,
-        governance_receipt=args.get("governance_receipt"),
+        governance_receipt=_require_object(args, "governance_receipt", optional=True),
     )
 
     return {
@@ -255,8 +274,20 @@ def _handle_sign_trigger(args: dict[str, Any]) -> Any:
             "with --key-id if you hold that party's key."
         )
 
-    key = load_private_key(_SIGNING_KEY_PATH)
-    trigger = sign_trigger(key, args["receipt"], key_id)
+    try:
+        key = load_private_key(_SIGNING_KEY_PATH)
+    except PartyError:
+        # ★ Without the path. `load_private_key` names the file in its
+        # message, which is right at a terminal and wrong here: the path was
+        # kept out of tool arguments so it would not travel through the
+        # conversation, and an error message is part of the conversation
+        # (Lee, F-11).
+        raise PartyError(
+            "The signing key this server was started with can no longer be "
+            "read. The operator should check the server's --key; nothing about "
+            "it is available to callers."
+        ) from None
+    trigger = sign_trigger(key, _require_object(args, "receipt"), key_id)
 
     return {
         "trigger": trigger,
@@ -275,6 +306,13 @@ def _handle_settle(args: dict[str, Any]) -> Any:
             "This server was started without an issuer, so it can verify and "
             "sign but not settle. Restart it with --endpoint <url> --token <t>."
         )
+
+    if not isinstance(args.get("payload"), str):
+        raise SettleError("`payload` must be the SDC4 XML instance as a string.")
+    if not isinstance(args.get("condition"), dict):
+        raise SettleError("`condition` must be a JSON object.")
+    if not isinstance(args.get("parties"), list):
+        raise SettleError("`parties` must be an array of key_id strings.")
 
     try:
         receipt = _settle(
@@ -396,7 +434,7 @@ def _handle_request(request: dict) -> dict | None:
                 req_id,
                 {"content": [{"type": "text", "text": json.dumps(result, default=str)}]},
             )
-        except Exception as exc:
+        except (PartyError, SettleError) as exc:
             # SEP-1303: execution and input-validation failures are tool errors,
             # not protocol errors. Returned in the result so the calling model
             # can see what went wrong and correct itself; a JSON-RPC error is
@@ -405,6 +443,27 @@ def _handle_request(request: dict) -> dict | None:
                 req_id,
                 {
                     "content": [{"type": "text", "text": f"Tool execution error: {exc}"}],
+                    "isError": True,
+                },
+            )
+        except Exception as exc:
+            # Anything else is a defect in this server, not in the caller's
+            # input. Say so without the Python traceback: the exception text
+            # can name paths and internals that do not belong in a transcript.
+            return _jsonrpc_response(
+                req_id,
+                {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Tool execution error: the server could not "
+                                f"process this input ({type(exc).__name__}). "
+                                "This is a defect worth reporting at "
+                                "https://github.com/SemanticDataCharter/sdcreceipt/issues"
+                            ),
+                        }
+                    ],
                     "isError": True,
                 },
             )
@@ -503,6 +562,12 @@ def main(argv: list[str] | None = None) -> None:
     if args.endpoint:
         import os
 
+        from sdcreceipt.issue import check_endpoint
+
+        try:
+            check_endpoint(args.endpoint)
+        except SettleError as exc:
+            parser.error(str(exc))
         token = args.token or os.environ.get("SDCRECEIPT_TOKEN", "")
         if not token:
             parser.error(

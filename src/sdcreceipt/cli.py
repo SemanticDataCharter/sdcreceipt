@@ -42,8 +42,10 @@ from sdcreceipt.issue import (
     DEFAULT_ENDPOINT,
     SettleError,
     SettleRejected,
+    check_endpoint,
     settle,
 )
+from sdcreceipt.party import KeySet
 from sdcreceipt.verify import verify
 
 
@@ -59,17 +61,31 @@ def _load_json(path: Path, what: str) -> dict:
 def cmd_verify(args) -> int:
     receipt = _load_json(Path(args.receipt), "receipt")
 
-    issuer_keys = {}
+    issuer_keys: dict = {}
     party_keys = None
     if args.keys:
-        try:
-            keyset = load_key_set_file(Path(args.keys))
-        except PartyError as exc:
-            raise SystemExit(f"error: {exc}")
-        # One file may carry both; the Receipt says which id is which.
-        issuer_ids = {s.get("key_id") for s in receipt.get("signatures", [])}
-        issuer_keys = {k: v for k, v in keyset.items() if k in issuer_ids}
-        party_keys = {k: v for k, v in keyset.items() if k not in issuer_ids} or None
+        # --keys may be given more than once: the issuer publishes one
+        # document and each party publishes their own, and a verifier holds
+        # all of them. Before 4.2.2 they had to be merged by hand first.
+        keyset = KeySet()
+        for path in args.keys:
+            try:
+                keyset.merge(load_key_set_file(Path(path)))
+            except PartyError as exc:
+                raise SystemExit(f"error: {exc}")
+        # The Receipt says which id is which. Both halves keep their status.
+        signatures = receipt.get("signatures", []) if isinstance(receipt, dict) else []
+        issuer_ids = {
+            s.get("key_id") for s in signatures if isinstance(s, dict)
+        }
+        issuer_keys, party_keys = KeySet(), KeySet()
+        for key_id, key in keyset.items():
+            target = issuer_keys if key_id in issuer_ids else party_keys
+            target[key_id] = key
+            if key_id in keyset.status:
+                target.status[key_id] = keyset.status[key_id]
+        if not party_keys:
+            party_keys = None
 
     schema = _load_json(Path(args.schema), "schema") if args.schema else None
     governance = (
@@ -121,7 +137,7 @@ def cmd_init(args) -> int:
 
     document_path.write_text(json.dumps(key_document(key, key_id), indent=2) + "\n")
 
-    print(f"private key      {private_path}  (mode 0600, keep it)")
+    print(f"private key      {private_path}  (mode 0600 from the first byte, keep it)")
     print(f"key document     {document_path}")
     print()
     print("Publish the key document so it is reachable, unauthenticated, at:")
@@ -156,6 +172,11 @@ def cmd_trigger(args) -> int:
             file=sys.stderr,
         )
         return 0
+
+    try:
+        check_endpoint(args.submit, what="--submit URL")
+    except SettleError as exc:
+        raise SystemExit(f"error: {exc}")
 
     import urllib.error
     import urllib.request
@@ -201,6 +222,21 @@ def _ask(prompt: str, *, default: str = "") -> str:
     return answer or default
 
 
+def _ask_secret(prompt: str) -> str:
+    """Like `_ask`, for a value that must not appear on the terminal."""
+    if not sys.stdin.isatty():
+        raise SystemExit(
+            "error: missing --token, SDCRECEIPT_TOKEN is unset, and stdin is "
+            "not a terminal, so there is nobody to ask. Set the variable."
+        )
+    import getpass
+
+    try:
+        return getpass.getpass(f"{prompt} ").strip()
+    except (EOFError, KeyboardInterrupt):
+        raise SystemExit("\ncancelled")
+
+
 def cmd_settle(args) -> int:
     payload_path = Path(args.payload)
     try:
@@ -214,11 +250,18 @@ def cmd_settle(args) -> int:
 
         token = os.environ.get("SDCRECEIPT_TOKEN", "")
     if not token:
-        # Asked for, never defaulted, and never echoed into a shell history by
-        # us. The environment variable is the better habit and is named here.
-        token = _ask("API token (or set SDCRECEIPT_TOKEN):")
+        # Asked for without echo. Until 4.2.2 this went through `input()`,
+        # which prints the token to the terminal as it is typed and leaves it
+        # in scrollback (Lee, F-06). The environment variable is the better
+        # habit and is named in the prompt.
+        token = _ask_secret("API token (or set SDCRECEIPT_TOKEN):")
     if not token:
         raise SystemExit("error: issuing needs a token. Everything else here does not.")
+
+    try:
+        check_endpoint(args.endpoint)
+    except SettleError as exc:
+        raise SystemExit(f"error: {exc}")
 
     current_state = args.current_state or _ask("current_state:")
     target_state = args.target_state or _ask("target_state:")
@@ -298,7 +341,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("verify", help="verify a Receipt (no network, no account)")
     p.add_argument("receipt")
-    p.add_argument("--keys", help="published key set, JSON")
+    p.add_argument(
+        "--keys",
+        action="append",
+        metavar="FILE",
+        help="a published key document (JSON); repeat for the issuer's and each party's",
+    )
     p.add_argument("--schema", help="the published JSON Schema")
     p.add_argument("--governance", help="the governance Receipt, if held")
     p.add_argument("--payload", help="the payload, if held")
