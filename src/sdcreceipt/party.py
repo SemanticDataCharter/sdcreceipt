@@ -64,20 +64,57 @@ def public_key_pem(key) -> str:
 
 
 def write_private_key(key: ec.EllipticCurvePrivateKey, path: Path) -> Path:
-    """Write a private key with owner-only permissions, refusing to clobber."""
-    if path.exists():
+    """
+    Write a private key with owner-only permissions, refusing to clobber.
+
+    ★ Created with the final mode, not chmod'ed after. Until 4.2.2 the file
+    was written with the process umask and tightened a moment later, which
+    left a window in which another account on a shared machine could read
+    it. `O_EXCL` also makes the refusal to overwrite atomic rather than a
+    check followed by a write.
+    """
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PRIVATE_KEY_MODE)
+    except FileExistsError:
         raise PartyError(
             f"{path} already exists. Refusing to overwrite a private key: if "
             "it is in use, replacing it invalidates every signature made with "
             "it. Move it aside deliberately if you mean to rotate."
-        )
-    path.write_bytes(private_key_pem(key))
+        ) from None
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(private_key_pem(key))
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    # The umask cannot widen the mode passed to open(), but a permissive one
+    # cannot be relied on to narrow it either, so set it explicitly as well.
     os.chmod(path, PRIVATE_KEY_MODE)
     return path
 
 
 def load_private_key(path: Path) -> ec.EllipticCurvePrivateKey:
-    """Load a P-256 private key, warning if the file is world-readable."""
+    """
+    Load a P-256 private key, warning if the file is readable by others.
+
+    The warning is a `UserWarning`, so a caller that wants it fatal can turn
+    warnings into errors and one that has its own policy can filter it.
+    """
+    try:
+        mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError as exc:
+        raise PartyError(f"Could not read a private key from {path}: {exc}") from exc
+    if mode & (stat.S_IRWXG | stat.S_IRWXO):
+        import warnings
+
+        warnings.warn(
+            f"{path} is readable by other accounts (mode {mode:04o}). A "
+            "private key readable by others is a private key you no longer "
+            f"control; chmod {PRIVATE_KEY_MODE:o} it.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     try:
         key = serialization.load_pem_private_key(path.read_bytes(), password=None)
     except Exception as exc:
@@ -187,26 +224,96 @@ def sign_trigger(
     }
 
 
-def load_key_set(document: dict[str, Any]) -> dict[str, Any]:
+class KeySet(dict):
     """
-    Turn a published key document into ``{key_id: public_key}``.
+    ``{key_id: public_key}`` plus what the key document said about each key.
+
+    A plain dict would lose ``status``. A key the document marks ``revoked``
+    must not verify anything, and before 4.2.2 it verified like an active one
+    because only the PEM was kept.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.status: dict[str, str] = {}
+
+    def revoked(self, key_id: str) -> bool:
+        return self.status.get(key_id, "active") == "revoked"
+
+    def merge(self, other: "KeySet") -> "KeySet":
+        self.update(other)
+        self.status.update(other.status)
+        return self
+
+
+def _public_key(pem: Any, key_id: str):
+    """
+    Load one PEM and insist it is the key type the signatures require.
+
+    ★ ES256 means ECDSA over P-256, and `verify` asks the key object to check
+    an ECDSA signature. Handing it an RSA or Ed25519 key raised a `TypeError`
+    from deep inside `cryptography` (Lee, F-02); worse, a key on another curve
+    would make a verification "succeed" against a key nobody claimed to sign
+    with. The curve is checked here, once, for every key that enters.
+    """
+    if not isinstance(pem, str):
+        raise PartyError(f"Key {key_id!r}: public_key_pem must be a PEM string.")
+    try:
+        key = serialization.load_pem_public_key(pem.encode("ascii"))
+    except Exception as exc:
+        raise PartyError(f"Key {key_id!r}: not a readable PEM public key ({exc}).") from exc
+    if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(
+        key.curve, ec.SECP256R1
+    ):
+        raise PartyError(
+            f"Key {key_id!r} is not an ECDSA P-256 public key. ES256 signatures "
+            "can only be checked against P-256, so this key cannot verify a "
+            "Receipt and will not be loaded."
+        )
+    return key
+
+
+def load_key_set(document: Any) -> KeySet:
+    """
+    Turn a published key document into a :class:`KeySet`.
 
     Accepts the issuer key-set shape and a did:web DID document, so a party
-    does not have to publish a second document just for this tool.
+    does not have to publish a second document just for this tool. Every key
+    is checked to be ECDSA P-256; a key marked ``revoked`` is kept, and
+    recorded as revoked, so a signature made with it fails for that reason
+    rather than as "no key held".
     """
-    keys: dict[str, Any] = {}
+    if not isinstance(document, dict):
+        raise PartyError(
+            "A key document is a JSON object with a `keys` array (key_id, "
+            "public_key_pem) or a DID document with verificationMethod."
+        )
+    keys = KeySet()
 
-    for entry in document.get("keys", []):
+    entries = document.get("keys", [])
+    if not isinstance(entries, list):
+        raise PartyError("`keys` must be an array.")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
         pem = entry.get("public_key_pem")
-        if pem and entry.get("key_id"):
-            keys[entry["key_id"]] = serialization.load_pem_public_key(
-                pem.encode("ascii")
-            )
+        key_id = entry.get("key_id")
+        if pem and isinstance(key_id, str):
+            keys[key_id] = _public_key(pem, key_id)
+            status = entry.get("status")
+            if isinstance(status, str):
+                keys.status[key_id] = status
 
-    for method in document.get("verificationMethod", []):
+    methods = document.get("verificationMethod", [])
+    if not isinstance(methods, list):
+        raise PartyError("`verificationMethod` must be an array.")
+    for method in methods:
+        if not isinstance(method, dict):
+            continue
         pem = method.get("publicKeyPem")
-        if pem and method.get("id"):
-            keys[method["id"]] = serialization.load_pem_public_key(pem.encode("ascii"))
+        key_id = method.get("id")
+        if pem and isinstance(key_id, str):
+            keys[key_id] = _public_key(pem, key_id)
 
     if not keys:
         raise PartyError(
@@ -216,8 +323,10 @@ def load_key_set(document: dict[str, Any]) -> dict[str, Any]:
     return keys
 
 
-def load_key_set_file(path: Path) -> dict[str, Any]:
+def load_key_set_file(path: Path) -> KeySet:
     try:
         return load_key_set(json.loads(path.read_text()))
     except json.JSONDecodeError as exc:
         raise PartyError(f"{path} is not valid JSON: {exc}") from exc
+    except FileNotFoundError:
+        raise PartyError(f"no key document at {path}") from None

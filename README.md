@@ -1,5 +1,7 @@
 # sdcreceipt
 
+<!-- mcp-name: io.github.SemanticDataCharter/sdcreceipt -->
+
 Verify and settle VSL Settlement Receipts.
 
 **Verification needs no account, no network, and nothing from the issuer.**
@@ -68,7 +70,7 @@ account, no network, no API key. See [`examples/`](examples/).
 
 ## For an agent
 
-The same two things over MCP, in the same package:
+Three of the four verbs over MCP, in the same package:
 
 ```bash
 sdcreceipt-mcp --key vsl-party.pem \
@@ -80,7 +82,7 @@ when the server has what it needs, so a tool is never offered whose every call
 would fail.
 
 Two deliberate omissions, and they are the security posture rather than an
-oversight:
+oversight (see also [SECURITY.md](SECURITY.md)):
 
 - **No key generation.** A private key generated inside an agent session has no
   clear custody story. `init` stays a human act at a terminal.
@@ -101,25 +103,39 @@ travel through the conversation.
 
 ## If you were sent a Receipt
 
-You do not need an account with anyone.
+You do not need an account with anyone. You need the issuer's published key
+document and, for a settled Receipt, each party's. The Receipt names the
+parties by the URIs they publish their keys at; the issuer's key document is at
+a fixed well-known path.
 
 ```bash
 pip install sdcreceipt
 curl -O https://sdcstudio.axius-sdc.com/.well-known/sdcstudio-signing-keys.json
-sdcreceipt verify receipt.json --keys sdcstudio-signing-keys.json
+curl -o vendor-keys.json  https://vendor.example/.well-known/vsl-key.json
+curl -o partner-keys.json https://partner.example/.well-known/did.json
+sdcreceipt verify receipt.json \
+    --keys sdcstudio-signing-keys.json --keys vendor-keys.json --keys partner-keys.json
 ```
 
 Every check is reported, not just the first failure:
 
 ```
-PASS  schema: conforms
 PASS  receipt_hash: matches the canonical content
 PASS  signature[sdcstudio-signing-key-v1]: verifies over receipt_hash
-PASS  trigger[https://vendor.example/.well-known/vsl-key.json]: verifies
+PASS  trigger[https://vendor.example/.well-known/vsl-key.json]: verifies over {condition_hash, receipt_id}
+PASS  trigger[did:web:partner.example]: verifies over {condition_hash, receipt_id}
+PASS  triggers.unique: one trigger per party
 PASS  settlement.complete: every listed party has triggered
 
 VERIFIED
 ```
+
+With only the issuer's document, the issuer signature and the hashes are
+checked and `settlement.complete` is recorded as unestablished, so the Receipt
+does **not** verify: whether every party triggered is a claim about
+authorization, and no trigger signature was checked. That is the correct
+answer, not a defect. Pass `--schema settlement-receipt-1.0.schema.json` as
+well to check the shape first (`pip install 'sdcreceipt[schema]'`).
 
 A Receipt carries **hash commitments, never the payload**. So verification
 tells you a conformant, authorized, dual-triggered exchange occurred, without
@@ -295,9 +311,20 @@ package.
 
 ## Dependencies
 
-`sdcgovernance` for canonicalization and `cryptography` for ECDSA, both
-Apache-2.0-compatible libraries. `jsonschema` is optional and only needed for
-`--schema`.
+Python 3.10 or later.
+
+Two direct dependencies, both Apache-2.0-compatible libraries:
+`sdcgovernance` (pinned `>=4.2.0,<5`) for RFC 8785 canonicalization, and
+`cryptography` for ECDSA. `jsonschema` is optional and only needed for
+`--schema`. A clean `pip install sdcreceipt` resolves those two plus their own
+dependencies, about fourteen packages in all; `pip install --report` lists the
+exact set for your platform.
 
 These are **library** dependencies. Nothing here calls a service, and
-`verify` makes no network request at all.
+`verify` makes no network request at all. `settle` and `trigger --submit`
+refuse any endpoint that is not `https://`, except loopback for a local issuer.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for how to report a vulnerability, the supported
+versions, and what this tool does and does not protect against.

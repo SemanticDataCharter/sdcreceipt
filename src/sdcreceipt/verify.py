@@ -102,10 +102,28 @@ def trigger_message(receipt_id: str, condition_hash: str) -> bytes:
     )
 
 
-def _b64url_to_raw(value: str) -> bytes:
+#: A 64-byte P1363 signature is exactly 86 base64url characters, unpadded.
+_B64URL_SIGNATURE = __import__("re").compile(r"^[A-Za-z0-9_-]{86}$")
+
+
+def _b64url_to_raw(value: Any) -> bytes:
+    """
+    Decode a base64url signature strictly.
+
+    ★ `base64.urlsafe_b64decode` discards characters outside the alphabet and
+    tolerates padding, so two different strings could decode to one signature
+    and a corrupted value could still "decode" (Lee, F-09). A signature is
+    accepted only in the one spelling the specification produces: 86
+    characters from the base64url alphabet, no padding.
+    """
     import base64
 
-    raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    if not isinstance(value, str) or not _B64URL_SIGNATURE.match(value):
+        raise ValueError(
+            "expected 86 unpadded base64url characters (a 64-byte P1363 "
+            "signature); a DER signature is variable length and will not fit"
+        )
+    raw = base64.urlsafe_b64decode(value + "==")
     if len(raw) != 64:
         raise ValueError(
             f"expected a 64-byte P1363 signature, got {len(raw)} bytes "
@@ -143,6 +161,82 @@ def _verify_ecdsa(public_key, message: bytes, signature: str, *, prehashed: bool
     return ""
 
 
+#: The Receipt format this implementation verifies. Independent of the
+#: package version: a Receipt says ``"version": "1.0"`` and that is the frozen
+#: wire format.
+SUPPORTED_RECEIPT_VERSIONS = ("1.0",)
+
+
+def _shape_problems(receipt: Any) -> list[str]:
+    """
+    Why a document cannot be verified at all, before any rule is applied.
+
+    ★ A verifier is the one component whose input is chosen by whoever wants
+    it to fail badly. Six malformed shapes reached an unhandled exception in
+    4.2.1 (a list where an object was expected, a string for `settlement`, a
+    trigger that was not an object, an unhashable `key_id`, and so on), and
+    over MCP that exception was the tool's whole answer (Lee, F-03). Every
+    place the procedure indexes into the document is checked here first, so a
+    malformed Receipt is reported as malformed and nothing else runs.
+    """
+    problems: list[str] = []
+    if not isinstance(receipt, dict):
+        return ["the Receipt is not a JSON object"]
+
+    for name in ("receipt_id", "receipt_hash", "version", "payload_hash"):
+        if name in receipt and not isinstance(receipt[name], str):
+            problems.append(f"`{name}` must be a string")
+
+    signatures = receipt.get("signatures", [])
+    if not isinstance(signatures, list):
+        problems.append("`signatures` must be an array")
+    else:
+        for i, signature in enumerate(signatures):
+            if not isinstance(signature, dict):
+                problems.append(f"`signatures[{i}]` must be an object")
+            else:
+                for name in ("key_id", "alg", "sig"):
+                    if name in signature and not isinstance(signature[name], str):
+                        problems.append(f"`signatures[{i}].{name}` must be a string")
+
+    settlement = receipt.get("settlement", {})
+    if not isinstance(settlement, dict):
+        problems.append("`settlement` must be an object")
+    else:
+        parties = settlement.get("parties", [])
+        if not isinstance(parties, list) or not all(isinstance(x, str) for x in parties):
+            problems.append("`settlement.parties` must be an array of strings")
+        triggers = settlement.get("triggers", [])
+        if not isinstance(triggers, list):
+            problems.append("`settlement.triggers` must be an array")
+        else:
+            for i, trigger in enumerate(triggers):
+                if not isinstance(trigger, dict):
+                    problems.append(f"`settlement.triggers[{i}]` must be an object")
+                else:
+                    for name in ("key_id", "signature"):
+                        if name in trigger and not isinstance(trigger[name], str):
+                            problems.append(
+                                f"`settlement.triggers[{i}].{name}` must be a string"
+                            )
+        if "condition_hash" in settlement and not isinstance(
+            settlement["condition_hash"], str
+        ):
+            problems.append("`settlement.condition_hash` must be a string")
+
+    governance = receipt.get("governance", {})
+    if not isinstance(governance, dict):
+        problems.append("`governance` must be an object")
+
+    return problems
+
+
+def _revoked(keys: dict[str, Any], key_id: str) -> bool:
+    """Whether the key document that supplied this key marked it revoked."""
+    revoked = getattr(keys, "revoked", None)
+    return bool(revoked(key_id)) if callable(revoked) else False
+
+
 def verify(
     receipt: dict[str, Any],
     *,
@@ -157,7 +251,10 @@ def verify(
 
     Args:
         receipt: The Receipt.
-        issuer_keys: ``{key_id: public_key}``. Held or fetched beforehand.
+        issuer_keys: ``{key_id: public_key}``. Held or fetched beforehand. A
+            :class:`~sdcreceipt.party.KeySet` also carries each key's
+            published ``status``; a key marked ``revoked`` fails the signature
+            it is named on.
         party_keys: ``{key_id: public_key}`` for triggers. Omit to skip that
             step, which is legitimate when the keys are not held.
         schema: The published JSON Schema, to check shape first.
@@ -165,6 +262,29 @@ def verify(
         payload: The payload, if held.
     """
     result = Result()
+
+    problems = _shape_problems(receipt)
+    if problems:
+        result.record(
+            "shape",
+            False,
+            "not a Receipt this procedure can read: " + "; ".join(problems[:4]),
+        )
+        return result
+
+    version = receipt.get("version")
+    if version not in SUPPORTED_RECEIPT_VERSIONS:
+        # ★ Refused, not assumed. Without this a "2.0" document was checked
+        # under 1.0 rules and could pass them; a verifier that applies the
+        # wrong rules and says VERIFIED is the schema-check problem again.
+        result.record(
+            "version",
+            False,
+            f"Receipt version {version!r} is not one this tool implements "
+            f"({', '.join(SUPPORTED_RECEIPT_VERSIONS)}). Refusing to apply "
+            "1.0 rules to a document that says it follows others",
+        )
+        return result
 
     if schema is not None:
         try:
@@ -195,7 +315,16 @@ def verify(
         if errors:
             return result
 
-    recomputed = hashlib.sha256(canonical_content(receipt)).hexdigest()
+    try:
+        content = canonical_content(receipt)
+    except Exception as exc:
+        # RFC 8785 refuses what JSON cannot round-trip (NaN, integers beyond
+        # 2^53). A Receipt carrying one cannot have been hashed by a
+        # conformant issuer, and the refusal is the finding.
+        result.record("receipt_hash", False, f"cannot canonicalize the Receipt: {exc}")
+        return result
+
+    recomputed = hashlib.sha256(content).hexdigest()
     matches = recomputed == receipt.get("receipt_hash")
     result.record(
         "receipt_hash",
@@ -228,6 +357,15 @@ def verify(
             )
             continue
 
+        if _revoked(issuer_keys, key_id):
+            # ★ A revoked key is not a missing key. The document that
+            # published it says it must not be trusted, and a signature it
+            # made is exactly what that status exists to reject.
+            result.record(
+                label, False, f"key {key_id!r} is marked revoked in the key document"
+            )
+            continue
+
         reason = _verify_ecdsa(key, digest, signature.get("sig", ""), prehashed=True)
         result.record(label, not reason, reason or "verifies over receipt_hash")
 
@@ -253,6 +391,12 @@ def verify(
             key = party_keys.get(key_id)
             if key is None:
                 result.record(label, False, f"no key held for party {key_id!r}")
+                continue
+
+            if _revoked(party_keys, key_id):
+                result.record(
+                    label, False, f"key {key_id!r} is marked revoked in the key document"
+                )
                 continue
 
             reason = _verify_ecdsa(

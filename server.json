@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.SemanticDataCharter/sdcreceipt",
+  "description": "Verify and settle VSL Settlement Receipts. Verification needs no network and no account.",
+  "repository": {
+    "url": "https://github.com/SemanticDataCharter/sdcreceipt",
+    "source": "github"
+  },
+  "version": "4.2.2",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "sdcreceipt",
+      "version": "4.2.2",
+      "runtimeHint": "uvx",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sdcreceipt"
-version = "4.2.1"
+version = "4.2.2"
 description = "Verify and settle VSL Settlement Receipts. No account, no network for verification."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,7 +16,7 @@ dependencies = [
     # Canonicalization, reused rather than reimplemented: a second RFC 8785
     # implementation can disagree with the first, and the disagreement is
     # silent. Apache-2.0, and a library dependency, not a service one.
-    "sdcgovernance>=4.2.0",
+    "sdcgovernance>=4.2.0,<5",
     "cryptography>=42.0",
 ]
 
