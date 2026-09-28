@@ -43,7 +43,9 @@ from sdcreceipt.issue import (
     SettleError,
     SettleRejected,
     check_endpoint,
+    payload_current_state,
     settle,
+    split_response,
 )
 from sdcreceipt.party import KeySet
 from sdcreceipt.verify import verify
@@ -263,7 +265,22 @@ def cmd_settle(args) -> int:
     except SettleError as exc:
         raise SystemExit(f"error: {exc}")
 
-    current_state = args.current_state or _ask("current_state:")
+    # ★ The payload's own <current-state> is the default, because the issuer
+    # treats it as authoritative. Until 4.2.3 an omitted flag was a blind
+    # prompt, and the natural answer (Enter) sent an empty state.
+    declared = payload_current_state(payload)
+    current_state = args.current_state
+    if current_state and declared and current_state != declared:
+        print(
+            f"warning: --current-state {current_state!r} differs from the payload's "
+            f"<current-state> {declared!r}; the issuer treats the payload as authoritative.",
+            file=sys.stderr,
+        )
+    if not current_state and declared:
+        current_state = declared
+        print(f"current_state: {declared} (from the payload's <current-state>)", file=sys.stderr)
+    if not current_state:
+        current_state = _ask("current_state:")
     target_state = args.target_state or _ask("target_state:")
 
     if args.condition:
@@ -322,12 +339,41 @@ def cmd_settle(args) -> int:
     except SettleError as exc:
         raise SystemExit(f"error: {exc}")
 
+    # ★ The issuer answers with an envelope; the Receipt is the artifact.
+    # `--out` (and stdout) carry the Receipt, so `verify` and `trigger` accept
+    # the file as written. `--response` keeps the whole envelope for the record.
+    response = receipt
+    receipt, meta = split_response(response)
+    if args.response:
+        Path(args.response).write_text(json.dumps(response, indent=2))
     body = json.dumps(receipt, indent=2)
     if args.out:
         Path(args.out).write_text(body)
         print(f"receipt {receipt.get('receipt_id', '')} -> {args.out}", file=sys.stderr)
     else:
         print(body)
+
+    governance = meta.get("governance") or {}
+    decision = governance.get("decision") or (receipt.get("governance") or {}).get("decision")
+    if decision:
+        print(f"governance: {decision}", file=sys.stderr)
+    if decision == "DENY":
+        # Issued and signed, but it records a refusal: nobody can trigger it.
+        # Said on stderr so a script reading stdout still gets the Receipt.
+        print(
+            "The issuer refused this transition. The Receipt records the refusal "
+            "and accepts no triggers.",
+            file=sys.stderr,
+        )
+        allowed = [t.get("target_symbol") for t in governance.get("allowed_transitions") or [] if isinstance(t, dict)]
+        if allowed:
+            print(f"From {governance.get('current_state')!r} you can go to: {', '.join(allowed)}", file=sys.stderr)
+        for path in governance.get("workflow") or []:
+            if isinstance(path, dict):
+                print(f"  {path.get('path', '(unnamed)')}: {' -> '.join(map(str, path.get('states') or []))}", file=sys.stderr)
+    wallet = meta.get("wallet") or {}
+    if wallet.get("charged") is not None:
+        print(f"charged {wallet.get('charged')}, balance {wallet.get('balance')}", file=sys.stderr)
     return 0
 
 
@@ -364,13 +410,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("payload", help="the SDC4 XML instance to settle")
     p.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="issuer settle URL")
     p.add_argument("--token", help="API token; or set SDCRECEIPT_TOKEN")
-    p.add_argument("--current-state", dest="current_state")
+    p.add_argument(
+        "--current-state",
+        dest="current_state",
+        help="defaults to the payload's <current-state>",
+    )
     p.add_argument("--target-state", dest="target_state")
     p.add_argument("--condition", help='release condition as JSON, e.g. \'{"on":"goods received"}\'')
     p.add_argument("--condition-file", dest="condition_file", help="the condition, from a file")
     p.add_argument("--party", action="append", help="a party key_id; give it twice or more")
     p.add_argument("--previous", help="receipt_id to chain onto")
     p.add_argument("--out", help="write the Receipt here instead of stdout")
+    p.add_argument(
+        "--response",
+        help="also write the issuer's whole response (governance, wallet) here",
+    )
     p.set_defaults(func=cmd_settle)
 
     p = sub.add_parser("trigger", help="sign a trigger for a settlement")

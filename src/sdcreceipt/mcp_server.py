@@ -60,7 +60,7 @@ from typing import Any
 
 from sdcreceipt import __version__
 from sdcreceipt.party import PartyError, load_key_set, load_private_key, sign_trigger
-from sdcreceipt.issue import SettleError, SettleRejected, settle as _settle
+from sdcreceipt.issue import SettleError, SettleRejected, settle as _settle, split_response
 from sdcreceipt.verify import verify
 
 JSONRPC_VERSION = "2.0"
@@ -341,7 +341,28 @@ def _handle_settle(args: dict[str, Any]) -> Any:
             "hint": exc.hint,
         }
 
-    return {"settled": True, "receipt": receipt}
+    # ★ The issuer answers with an envelope. `receipt` is the signed Receipt
+    # itself (what verify_receipt and sign_trigger take); until 4.2.3 it was the
+    # whole envelope, so passing it on failed. `decision` is surfaced because a
+    # DENY is issued and signed but accepts no triggers.
+    receipt, meta = split_response(receipt)
+    governance = meta.get("governance") or {}
+    result = {
+        "settled": True,
+        "receipt": receipt,
+        "decision": governance.get("decision") or (receipt.get("governance") or {}).get("decision"),
+        "settleable": governance.get("settleable"),
+    }
+    if meta.get("wallet"):
+        result["wallet"] = meta["wallet"]
+    if result["decision"] == "DENY":
+        result["hint"] = governance.get("hint") or (
+            "The issuer refused this transition. The Receipt records the refusal "
+            "and accepts no triggers."
+        )
+        result["allowed_transitions"] = governance.get("allowed_transitions", [])
+        result["workflow"] = governance.get("workflow", [])
+    return result
 
 
 TOOL_HANDLERS = {
