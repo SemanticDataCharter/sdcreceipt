@@ -37,6 +37,47 @@ class SettleError(Exception):
     """Issuing failed for a reason that is not a governance rejection."""
 
 
+def split_response(response: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Separate the Receipt from the rest of an issuer's settle response.
+
+    ★ An issuer answers with an envelope: the signed Receipt under ``receipt``,
+    beside ``governance`` (the decision and the workflow), ``verification``
+    (how to check it) and ``wallet`` (the charge). Only the Receipt is the
+    artifact a party verifies, triggers and passes on. Until 4.2.3 the CLI wrote
+    the whole envelope to ``--out``, so ``verify`` and ``trigger`` refused the
+    file and the receipt id printed blank.
+
+    A response that is already a bare Receipt (it has ``version`` and no
+    ``receipt``) is returned as the Receipt with empty metadata, so an issuer
+    that answers either way works.
+    """
+    inner = response.get("receipt")
+    if isinstance(inner, dict):
+        meta = {k: v for k, v in response.items() if k != "receipt"}
+        return inner, meta
+    return response, {}
+
+
+def payload_current_state(payload: str) -> str:
+    """
+    The value of the payload's ``<current-state>`` element, or "" if it has none.
+
+    ★ The issuer treats the instance's ``<current-state>`` as authoritative, so
+    it is the right default for ``current_state`` rather than a question the
+    person has to answer from memory. Read with a pattern, not an XML parser:
+    this is a convenience default, and it should not add a parser's attack
+    surface to a verb that otherwise only reads the file and posts it.
+    """
+    import re
+
+    match = re.search(
+        r"<(?:[A-Za-z_][\w.-]*:)?current-state\s*>\s*([^<]*?)\s*</(?:[A-Za-z_][\w.-]*:)?current-state\s*>",
+        payload,
+    )
+    return match.group(1) if match else ""
+
+
 def check_endpoint(url: str, *, what: str = "endpoint") -> str:
     """
     Refuse to send a token, or a signature, anywhere but over HTTPS.

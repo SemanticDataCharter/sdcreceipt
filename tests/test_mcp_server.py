@@ -551,6 +551,36 @@ class TestSettle:
         assert body["settled"] is True
         assert body["receipt"]["receipt_id"] == settled_receipt["receipt_id"]
 
+    def test_the_issuer_envelope_is_unwrapped(self, issuing_server, monkeypatch, settled_receipt):
+        """The issuer answers with an envelope; `receipt` must be the Receipt itself (4.2.3)."""
+        envelope = {
+            "receipt": settled_receipt,
+            "governance": {"decision": "PERMIT", "settleable": True},
+            "wallet": {"charged": "1.00", "balance": "9.00"},
+        }
+        monkeypatch.setattr(mcp_server, "_settle", lambda *a, **kw: envelope)
+        body = payload(call("settle", SETTLE_ARGS))
+        assert body["receipt"] == settled_receipt
+        assert body["decision"] == "PERMIT"
+        assert body["settleable"] is True
+        assert body["wallet"]["charged"] == "1.00"
+
+    def test_a_deny_says_it_accepts_no_triggers(self, issuing_server, monkeypatch, settled_receipt):
+        envelope = {
+            "receipt": settled_receipt,
+            "governance": {
+                "decision": "DENY",
+                "settleable": False,
+                "allowed_transitions": [],
+                "workflow": [{"path": "p", "states": ["Mild", "Severe"]}],
+            },
+        }
+        monkeypatch.setattr(mcp_server, "_settle", lambda *a, **kw: envelope)
+        body = payload(call("settle", SETTLE_ARGS))
+        assert body["decision"] == "DENY"
+        assert "no triggers" in body["hint"]
+        assert body["workflow"][0]["states"] == ["Mild", "Severe"]
+
     def test_it_posts_only_to_the_configured_endpoint(self, issuing_server, monkeypatch, settled_receipt):
         """The destination is not reachable from tool arguments."""
         seen = {}

@@ -6,6 +6,34 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+## [4.2.3] - 2026-09-28
+
+Two `settle` defects found on the first settlement with an outside party. Both
+were in the client; the issuer, the Receipt and the verifier were correct. No
+wire-format change; Receipt 1.0 is unchanged.
+
+### Fixed
+
+- **`settle --out` writes the Receipt, not the issuer's response.** An issuer
+  answers with an envelope (`receipt`, `governance`, `verification`,
+  `wallet`). The CLI wrote the whole envelope, so `verify` and `trigger`
+  refused the file (`Receipt version None`) and the receipt id printed blank.
+  The earlier tests mocked the issuer as if it answered with a bare Receipt,
+  which is why none of them caught it. `--out` and stdout now carry the Receipt;
+  the new `--response FILE` keeps the whole envelope for the record.
+- **A DENY is said plainly.** The decision is printed to stderr, and a DENY
+  says the Receipt records a refusal and accepts no triggers, with the model's
+  workflow paths, so nobody triggers or forwards it by mistake.
+- **`--current-state` defaults to the payload's `<current-state>`.** The issuer
+  treats the instance's value as authoritative, but an omitted flag was a blind
+  prompt whose natural answer (Enter) sent an empty state. A flag that differs
+  from the payload is honored with a warning. Read with a pattern, not an XML
+  parser, so the convenience adds no parser to the verb.
+- **The MCP `settle` tool returns the Receipt itself** under `receipt` (the
+  same envelope defect), plus `decision`, `settleable` and `wallet`; on a DENY,
+  `hint`, `allowed_transitions` and `workflow`. A bare-Receipt response from an
+  issuer still works in both places (`split_response`).
+
 ## [4.2.2] - 2026-09-16
 
 The hardening pass from Timothy Lee's independent review of 4.2.0 (findings

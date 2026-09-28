@@ -33,7 +33,11 @@ sdcreceipt settle payload.xml \
     --party did:web:partner.example
 ```
 
-`settle` prompts for anything it needs and was not given. Two of its fields are
+`settle` prompts for anything it needs and was not given, except `current_state`,
+which defaults to the payload's own `<current-state>`. It writes the Receipt to
+`--out` (or stdout), ready for `verify` and `trigger`; `--response FILE` also keeps
+the issuer's whole answer (the governance decision and the charge). A DENY is
+issued and signed but accepts no triggers, and `settle` says so. Two of its fields are
 not guessable and never were: the release condition is hashed by the issuer and
 never stored, and `current_state`/`target_state` come from a governance workflow
 defined in a schema the issuer holds, not you.
