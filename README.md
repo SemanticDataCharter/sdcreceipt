@@ -114,6 +114,7 @@ a fixed well-known path.
 
 ```bash
 pip install sdcreceipt
+curl -o receipt.json https://sdcstudio.axius-sdc.com/api/v1/vsl/receipt/<receipt id>   # or the file you were sent
 curl -O https://sdcstudio.axius-sdc.com/.well-known/sdcstudio-signing-keys.json
 curl -o vendor-keys.json  https://vendor.example/.well-known/vsl-key.json
 curl -o partner-keys.json https://partner.example/.well-known/did.json

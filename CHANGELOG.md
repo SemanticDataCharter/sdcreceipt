@@ -6,6 +6,22 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+## [4.2.4] - 2026-10-03
+
+One `verify` defect found while writing the instructions a reader follows on
+the day the Verifiable Settlement Layer is announced. No wire-format change;
+Receipt 1.0 is unchanged.
+
+### Fixed
+
+- **`verify` and `trigger` read the Receipt out of an issuer's response.** The
+  issuer's `/receipt/{id}` endpoint answers with a status envelope (`receipt`,
+  `status`, `decision`, `parties`, `triggered`, `awaiting`), and `settle`
+  answers with another. A reader who downloaded either and ran `verify` on it
+  was told `Receipt version None`. Both verbs now take the bare Receipt or
+  either envelope, say on stderr when they unwrapped one, and verify the signed
+  document inside. The MCP `verify_receipt` tool does the same.
+
 ## [4.2.3] - 2026-09-28
 
 Two `settle` defects found on the first settlement with an outside party. Both

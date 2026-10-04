@@ -222,7 +222,7 @@ def _require_object(args: dict[str, Any], name: str, *, optional: bool = False) 
 def _handle_verify_receipt(args: dict[str, Any]) -> Any:
     if not isinstance(args, dict):
         raise PartyError("arguments must be a JSON object.")
-    receipt = _require_object(args, "receipt")
+    receipt, _meta = split_response(_require_object(args, "receipt"))   # a bare Receipt or the issuer's envelope around one
     issuer_keys = load_key_set(_require_object(args, "issuer_keys"))
 
     party_keys = None

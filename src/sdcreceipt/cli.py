@@ -60,8 +60,27 @@ def _load_json(path: Path, what: str) -> dict:
         raise SystemExit(f"error: {path} is not valid JSON: {exc}")
 
 
+def _load_receipt(path: Path) -> dict:
+    """
+    The Receipt at ``path``, whether the file is the bare Receipt or an issuer's
+    answer that carries it under ``receipt``.
+
+    ★ The issuer's ``/receipt/{id}`` endpoint answers with a status envelope
+    (``receipt``, ``status``, ``decision``, ``parties``, ``triggered``,
+    ``awaiting``) and ``settle`` answers with another (``receipt``,
+    ``governance``, ``verification``, ``wallet``). A reader who downloads either
+    and runs ``verify`` on it should not be told ``Receipt version None``; the
+    Receipt is the signed document inside, and that is what is verified.
+    """
+    doc = _load_json(path, "receipt")
+    receipt, meta = split_response(doc)
+    if meta:
+        print(f"read the Receipt out of the issuer's response ({', '.join(sorted(meta))})", file=sys.stderr)
+    return receipt
+
+
 def cmd_verify(args) -> int:
-    receipt = _load_json(Path(args.receipt), "receipt")
+    receipt = _load_receipt(Path(args.receipt))
 
     issuer_keys: dict = {}
     party_keys = None
@@ -154,7 +173,7 @@ def cmd_init(args) -> int:
 
 
 def cmd_trigger(args) -> int:
-    receipt = _load_json(Path(args.receipt), "receipt")
+    receipt = _load_receipt(Path(args.receipt))
 
     try:
         key = load_private_key(Path(args.key))
