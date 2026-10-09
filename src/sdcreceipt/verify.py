@@ -102,34 +102,73 @@ def trigger_message(receipt_id: str, condition_hash: str) -> bytes:
     )
 
 
-#: A 64-byte P1363 signature is exactly 86 base64url characters, unpadded.
-_B64URL_SIGNATURE = __import__("re").compile(r"^[A-Za-z0-9_-]{86}$")
+#: The signature algorithms a Receipt may name, and the raw length each one
+#: fixes. ``ES256`` (RFC 7518 §3.4) is ECDSA P-256 with the P1363 ``r||s`` pair,
+#: 64 bytes, 86 base64url characters. ``ML-DSA-65`` (Receipt 1.1) is the pure
+#: FIPS 204 signature over the same 32 digest bytes as its message, 3309 bytes,
+#: 4412 characters, named as the IETF "ML-DSA for JOSE and COSE" draft names it.
+#: Naming the algorithm pins the encoding; there is no separate encoding field.
+SIGNATURE_BYTES = {"ES256": 64, "ML-DSA-65": 3309}
+_B64URL_SIGNATURE = {
+    alg: __import__("re").compile(r"^[A-Za-z0-9_-]{%d}$" % (-(-length * 4 // 3)))
+    for alg, length in SIGNATURE_BYTES.items()
+}
 
 
-def _b64url_to_raw(value: Any) -> bytes:
+def _b64url_to_raw(value: Any, alg: str = "ES256") -> bytes:
     """
-    Decode a base64url signature strictly.
+    Decode a base64url signature strictly, at the length ``alg`` fixes.
 
     ★ `base64.urlsafe_b64decode` discards characters outside the alphabet and
     tolerates padding, so two different strings could decode to one signature
     and a corrupted value could still "decode" (Lee, F-09). A signature is
-    accepted only in the one spelling the specification produces: 86
-    characters from the base64url alphabet, no padding.
+    accepted only in the one spelling the specification produces: exactly the
+    characters its algorithm's length needs, from the base64url alphabet, no
+    padding (86 for ES256, 4412 for ML-DSA-65).
     """
     import base64
 
-    if not isinstance(value, str) or not _B64URL_SIGNATURE.match(value):
-        raise ValueError(
-            "expected 86 unpadded base64url characters (a 64-byte P1363 "
-            "signature); a DER signature is variable length and will not fit"
+    length = SIGNATURE_BYTES[alg]
+    chars = -(-length * 4 // 3)
+    if not isinstance(value, str) or not _B64URL_SIGNATURE[alg].match(value):
+        hint = (
+            "a 64-byte P1363 signature); a DER signature is variable length and will not fit"
+            if alg == "ES256"
+            else "a 3309-byte ML-DSA-65 signature)"
         )
-    raw = base64.urlsafe_b64decode(value + "==")
-    if len(raw) != 64:
-        raise ValueError(
-            f"expected a 64-byte P1363 signature, got {len(raw)} bytes "
-            "(a DER signature is variable length and will not be 64)"
-        )
+        raise ValueError(f"expected {chars} unpadded base64url characters ({hint}")
+    raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    if len(raw) != length:
+        raise ValueError(f"expected a {length}-byte {alg} signature, got {len(raw)} bytes")
     return raw
+
+
+def _verify_mldsa65(public_key, message: bytes, signature: str) -> str:
+    """
+    Return "" on success, or the reason an ML-DSA-65 signature failed.
+
+    Pure ML-DSA signs the message itself (FIPS 204), so for an issuer
+    signature ``message`` is the 32-byte receipt digest, the same bytes ES256
+    signs as a digest. Needs ``cryptography`` 48 or later.
+    """
+    from cryptography.exceptions import InvalidSignature
+
+    try:
+        from cryptography.hazmat.primitives.asymmetric import mldsa
+    except ImportError:
+        return "cannot check an ML-DSA-65 signature: cryptography 48 or later is required"
+
+    try:
+        raw = _b64url_to_raw(signature, "ML-DSA-65")
+    except Exception as exc:
+        return f"malformed signature: {exc}"
+    if not isinstance(public_key, mldsa.MLDSA65PublicKey):
+        return "the stated key is not an ML-DSA-65 key"
+    try:
+        public_key.verify(raw, message)
+    except InvalidSignature:
+        return "does not verify against the stated key"
+    return ""
 
 
 def _verify_ecdsa(public_key, message: bytes, signature: str, *, prehashed: bool) -> str:
@@ -161,10 +200,12 @@ def _verify_ecdsa(public_key, message: bytes, signature: str, *, prehashed: bool
     return ""
 
 
-#: The Receipt format this implementation verifies. Independent of the
-#: package version: a Receipt says ``"version": "1.0"`` and that is the frozen
-#: wire format.
-SUPPORTED_RECEIPT_VERSIONS = ("1.0",)
+#: The Receipt formats this implementation verifies. Independent of the
+#: package version: a Receipt says ``"version": "1.0"`` or ``"1.1"`` and that
+#: is the wire format. 1.1 is 1.0 signed twice: every listed signature must
+#: verify, and these algorithms must all be present.
+SUPPORTED_RECEIPT_VERSIONS = ("1.0", "1.1")
+REQUIRED_ALGS = {"1.0": ("ES256",), "1.1": ("ES256", "ML-DSA-65")}
 
 
 def _shape_problems(receipt: Any) -> list[str]:
@@ -282,7 +323,7 @@ def verify(
             False,
             f"Receipt version {version!r} is not one this tool implements "
             f"({', '.join(SUPPORTED_RECEIPT_VERSIONS)}). Refusing to apply "
-            "1.0 rules to a document that says it follows others",
+            "those rules to a document that says it follows others",
         )
         return result
 
@@ -339,12 +380,20 @@ def verify(
     )
 
     digest = receipt_digest(receipt)
+    required = REQUIRED_ALGS[version]
     for signature in receipt.get("signatures", []):
         key_id = signature.get("key_id", "")
+        alg = signature.get("alg")
         label = f"signature[{key_id}]"
 
-        if signature.get("alg") != "ES256":
-            result.record(label, False, f"alg is {signature.get('alg')!r}, expected ES256")
+        # ★ Every listed signature must verify, with the algorithm its ``alg``
+        # names. One this tool does not implement is a failure, not a skip,
+        # and one the version does not call for is a failure too: a 1.0
+        # Receipt carrying an ML-DSA-65 signature is not what 1.0 means.
+        if alg not in required:
+            result.record(
+                label, False, f"alg is {alg!r}; version {version} allows {', '.join(required)}"
+            )
             continue
 
         key = issuer_keys.get(key_id)
@@ -366,11 +415,27 @@ def verify(
             )
             continue
 
-        reason = _verify_ecdsa(key, digest, signature.get("sig", ""), prehashed=True)
-        result.record(label, not reason, reason or "verifies over receipt_hash")
+        if alg == "ML-DSA-65":
+            reason = _verify_mldsa65(key, digest, signature.get("sig", ""))
+        else:
+            reason = _verify_ecdsa(key, digest, signature.get("sig", ""), prehashed=True)
+        result.record(label, not reason, reason or f"verifies over receipt_hash ({alg})")
 
     if not receipt.get("signatures"):
         result.record("signatures", False, "the Receipt carries no signature")
+    else:
+        # ★ The version says which algorithms must be there. A Receipt that
+        # says 1.1 with only its ES256 signature verifying is not a 1.1
+        # Receipt, however good that one signature is.
+        present = {s.get("alg") for s in receipt.get("signatures", [])}
+        missing = [alg for alg in required if alg not in present]
+        result.record(
+            "signatures.algorithms",
+            not missing,
+            f"carries every signature version {version} requires ({', '.join(required)})"
+            if not missing
+            else f"version {version} requires {', '.join(required)}; missing {', '.join(missing)}",
+        )
 
     settlement = receipt.get("settlement", {})
     parties = settlement.get("parties", [])

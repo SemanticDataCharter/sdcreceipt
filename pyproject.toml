@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sdcreceipt"
-version = "4.2.4"
+version = "4.3.0"
 description = "Verify and settle VSL Settlement Receipts. No account, no network for verification."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,10 @@ dependencies = [
     # implementation can disagree with the first, and the disagreement is
     # silent. Apache-2.0, and a library dependency, not a service one.
     "sdcgovernance>=4.2.0,<5",
-    "cryptography>=42.0",
+    # 50 or later: ML-DSA-65 verification for Receipt 1.1 arrived in 48.0.0
+    # (OpenSSL 3.5 in the wheels); 50 is where the X.509 and key loaders are
+    # settled, and what the issuer pins.
+    "cryptography>=50.0",
 ]
 
 [project.optional-dependencies]

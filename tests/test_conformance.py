@@ -31,7 +31,12 @@ def kit():
     keys = json.loads((KIT / "keys.json").read_text())
     return {
         "manifest": json.loads((KIT / "manifest.json").read_text()),
-        "schema": json.loads((KIT / "settlement-receipt-1.0.schema.json").read_text()),
+        # One schema per Receipt version; a vector is checked against the one
+        # its own ``version`` names.
+        "schemas": {
+            v: json.loads((KIT / f"settlement-receipt-{v}.schema.json").read_text())
+            for v in ("1.0", "1.1")
+        },
         "issuer_keys": {
             k: load_pem_public_key(v.encode()) for k, v in keys["issuer_keys"].items()
         },
@@ -51,20 +56,21 @@ def run(kit, filename, withhold=()):
     trigger defect shipped: the one arrangement that broke it, a settled
     Receipt verified without party keys, could not be expressed here.
     """
+    receipt = json.loads((KIT / filename).read_text())
     args = {
         "issuer_keys": kit["issuer_keys"],
         "party_keys": kit["party_keys"],
-        "schema": kit["schema"],
+        "schema": kit["schemas"][receipt["version"]],
         "governance_receipt": kit["governance"],
         "payload": kit["payload"],
     }
     for name in withhold:
         args[name] = None
-    return verify(json.loads((KIT / filename).read_text()), **args)
+    return verify(receipt, **args)
 
 
 def test_the_kit_is_present(kit):
-    assert len(kit["manifest"]["vectors"]) == 11
+    assert len(kit["manifest"]["vectors"]) == 16
 
 
 def test_every_vector_behaves_as_the_manifest_says(kit):
@@ -165,7 +171,7 @@ def test_a_missing_key_is_reported_not_silently_skipped(kit):
     An unverified signature must never read as a verified one.
     """
     receipt = json.loads((KIT / "valid-settled.json").read_text())
-    result = verify(receipt, issuer_keys={}, schema=kit["schema"])
+    result = verify(receipt, issuer_keys={}, schema=kit["schemas"]["1.0"])
 
     assert not result.ok
     assert any("no key held" in c.detail for c in result.failures)
@@ -192,8 +198,74 @@ def test_a_missing_optional_dependency_is_reported_not_a_traceback(kit, monkeypa
     monkeypatch.setattr(builtins, "__import__", no_jsonschema)
 
     receipt = json.loads((KIT / "valid-settled.json").read_text())
-    result = verify(receipt, issuer_keys=kit["issuer_keys"], schema=kit["schema"])
+    result = verify(receipt, issuer_keys=kit["issuer_keys"], schema=kit["schemas"]["1.0"])
 
     assert not result.ok
     detail = next(c.detail for c in result.failures if c.name == "schema")
     assert "sdcreceipt[schema]" in detail
+
+
+# --- Receipt 1.1: the same content signed twice, ES256 and ML-DSA-65 ---
+
+
+def test_the_1_1_vector_verifies_with_both_signatures(kit):
+    result = run(kit, "valid-settled-1.1.json")
+    assert result.ok, result.failures
+    names = {c.name for c in result.checks}
+    assert "signature[sdcstudio-pq-signing-key-v1]" in names
+    assert "signatures.algorithms" in names
+
+
+def test_a_1_1_receipt_missing_its_mldsa_signature_fails_without_the_schema(kit):
+    """The schema catches it first; without one, the version's promise must still be checked."""
+    receipt = json.loads((KIT / "valid-settled-1.1.json").read_text())
+    receipt["signatures"] = [s for s in receipt["signatures"] if s["alg"] == "ES256"]
+    result = verify(receipt, issuer_keys=kit["issuer_keys"], party_keys=kit["party_keys"])
+    assert {c.name for c in result.failures} == {"signatures.algorithms"}
+
+
+def test_a_1_0_receipt_carrying_an_mldsa_signature_is_not_1_0(kit):
+    good = json.loads((KIT / "valid-settled.json").read_text())
+    extra = json.loads((KIT / "valid-settled-1.1.json").read_text())["signatures"][1]
+    good["signatures"].append(extra)
+    result = verify(good, issuer_keys=kit["issuer_keys"], party_keys=kit["party_keys"])
+    assert not result.ok
+    assert any(c.name == "signature[sdcstudio-pq-signing-key-v1]" and "allows ES256" in c.detail for c in result.failures)
+
+
+def test_an_mldsa_signature_is_decoded_strictly():
+    from sdcreceipt.verify import _b64url_to_raw
+
+    with pytest.raises(ValueError, match="4412 unpadded"):
+        _b64url_to_raw("A" * 86, "ML-DSA-65")
+    with pytest.raises(ValueError, match="86 unpadded"):
+        _b64url_to_raw("A" * 4412, "ES256")
+    assert len(_b64url_to_raw("A" * 4412, "ML-DSA-65")) == 3309
+
+
+def test_the_key_document_loader_admits_an_mldsa_key_and_nothing_else_new():
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519, mldsa
+
+    from sdcreceipt.party import PartyError, load_key_set
+
+    def pem(key):
+        return key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode("ascii")
+
+    keys = load_key_set({"keys": [{"key_id": "pq-v1", "public_key_pem": pem(mldsa.MLDSA65PrivateKey.generate())}]})
+    assert isinstance(keys["pq-v1"], mldsa.MLDSA65PublicKey)
+    with pytest.raises(PartyError, match="not an ECDSA P-256 or an ML-DSA-65"):
+        load_key_set({"keys": [{"key_id": "ed", "public_key_pem": pem(ed25519.Ed25519PrivateKey.generate())}]})
+
+
+def test_an_es256_key_cannot_check_an_mldsa_signature(kit):
+    """A key of the wrong type for the alg is reported on that signature, not as a crash."""
+    receipt = json.loads((KIT / "valid-settled-1.1.json").read_text())
+    swapped = dict(kit["issuer_keys"])
+    swapped["sdcstudio-pq-signing-key-v1"] = kit["issuer_keys"]["sdcstudio-signing-key-v1"]
+    result = verify(receipt, issuer_keys=swapped, party_keys=kit["party_keys"])
+    failed = {c.name: c.detail for c in result.failures}
+    assert list(failed) == ["signature[sdcstudio-pq-signing-key-v1]"]
+    assert "not an ML-DSA-65 key" in failed["signature[sdcstudio-pq-signing-key-v1]"]

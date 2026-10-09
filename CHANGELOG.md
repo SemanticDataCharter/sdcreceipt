@@ -6,6 +6,32 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-10-09
+
+Receipt 1.1: the same content signed twice, `ES256` and `ML-DSA-65` (FIPS 204,
+post-quantum), by the issuer over the same 32-byte digest. Receipt 1.0 is
+unchanged and verifies exactly as before. The issuer's design is in SDCStudio
+`design_docs/vsl/receipt-1.1-post-quantum-PRD.md`.
+
+### Added
+
+- **`verify` accepts Receipt 1.1.** Every listed signature must verify with
+  the algorithm its `alg` names; a signature this tool does not implement, or
+  one the version does not allow, is a failure, not a skip. A new check,
+  `signatures.algorithms`, fails a Receipt that says `1.1` without both an
+  `ES256` and an `ML-DSA-65` signature, even when no schema is passed.
+- **ML-DSA-65 keys load from a key document.** The issuer publishes a second
+  key (`alg` `ML-DSA-65`) beside the P-256 one; `--keys` admits it, and a
+  signature whose key is the wrong type for its `alg` is reported on that
+  signature. ML-DSA-65 signatures are decoded as strictly as ES256 ones: 4412
+  unpadded base64url characters, 3309 bytes, nothing else.
+- **Five 1.1 conformance vectors** (sixteen in all) and the 1.1 schema, from
+  the issuer's kit.
+
+### Changed
+
+- `cryptography>=50.0` (was 42): ML-DSA-65 verification arrived in 48.0.0.
+
 ## [4.2.4] - 2026-10-03
 
 One `verify` defect found while writing the instructions a reader follows on
