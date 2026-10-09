@@ -126,7 +126,9 @@ Every check is reported, not just the first failure:
 
 ```
 PASS  receipt_hash: matches the canonical content
-PASS  signature[sdcstudio-signing-key-v1]: verifies over receipt_hash
+PASS  signature[sdcstudio-signing-key-v1]: verifies over receipt_hash (ES256)
+PASS  signature[sdcstudio-pq-signing-key-v1]: verifies over receipt_hash (ML-DSA-65)
+PASS  signatures.algorithms: carries every signature version 1.1 requires (ES256, ML-DSA-65)
 PASS  trigger[https://vendor.example/.well-known/vsl-key.json]: verifies over {condition_hash, receipt_id}
 PASS  trigger[did:web:partner.example]: verifies over {condition_hash, receipt_id}
 PASS  triggers.unique: one trigger per party
@@ -139,8 +141,16 @@ With only the issuer's document, the issuer signature and the hashes are
 checked and `settlement.complete` is recorded as unestablished, so the Receipt
 does **not** verify: whether every party triggered is a claim about
 authorization, and no trigger signature was checked. That is the correct
-answer, not a defect. Pass `--schema settlement-receipt-1.0.schema.json` as
-well to check the shape first (`pip install 'sdcreceipt[schema]'`).
+answer, not a defect. Pass `--schema settlement-receipt-1.0.schema.json` (or
+`-1.1`, matching the Receipt's `version`) as well to check the shape first
+(`pip install 'sdcreceipt[schema]'`).
+
+**Receipt 1.1** (since 4.3.0) is 1.0 signed twice: an `ES256` and an
+`ML-DSA-65` (FIPS 204, post-quantum) signature by the issuer over the same
+32-byte digest. Every listed signature must verify, and a Receipt that says
+`1.1` must carry both; a 1.0 Receipt keeps verifying exactly as before. The
+issuer's key document lists both keys, each with its `alg`. ML-DSA-65
+verification comes from `cryptography` 48 or later, which this tool requires.
 
 A Receipt carries **hash commitments, never the payload**. So verification
 tells you a conformant, authorized, dual-triggered exchange occurred, without
@@ -220,7 +230,8 @@ and the Receipt does not verify. Before 4.2.1 it passed on a comparison of
 `tests/conformance/` ships the issuer's published vectors, and the suite runs
 this implementation against them.
 
-Eleven vectors. **Every invalid one encodes a defect that was actually made**,
+Sixteen vectors, eleven at Receipt 1.0 and five at 1.1 (each checked against
+the schema its own `version` names). **Every invalid one encodes a defect that was actually made**,
 not a hypothetical: a DER signature where ES256 requires P1363, a signature
 over the hex text of `receipt_hash` rather than its raw bytes, a governance
 binding that does not match the evidence held, a trigger replayed from another
@@ -311,8 +322,9 @@ family, so a version number tells you which reference model an artifact
 targets without looking anything up.
 
 Note that the **Receipt format version is separate** and independent: a
-Receipt says `"version": "1.0"`, which is the frozen wire format, not this
-package.
+Receipt says `"version": "1.0"` or `"1.1"`, which is the wire format, not this
+package. 4.3.0 is the first release that verifies 1.1; an earlier release
+refuses it by its version rather than guessing, as the format requires.
 
 ## Dependencies
 

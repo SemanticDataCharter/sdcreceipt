@@ -73,9 +73,45 @@
       "name": "triggers-forged-no-party-keys",
       "file": "triggers-forged-no-party-keys.json",
       "expect": "invalid",
-      "description": "Every trigger signature is well formed and wrong, and the verifier is run WITHOUT party keys. The parties and trigger key_ids still match as sets, so a verifier that decides settlement completeness by comparing strings reports VERIFIED over fabricated authorization. Completeness is a claim about authorization, so with no key to check against it must be recorded as unestablished rather than passed. Regression vector for the defect found in 4.2.0.",
+      "description": "Every trigger signature is well formed and wrong, and the verifier is run WITHOUT party keys. The parties and trigger key_ids still match as sets, so a verifier that decides settlement completeness by comparing strings reports VERIFIED over fabricated authorization. Completeness is a claim about authorization, so with no key to check against it must be recorded as unestablished rather than passed. Regression vector for the defect found in sdcreceipt 4.2.0.",
       "breaks": "settlement.complete",
-      "withhold": ["party_keys"]
+      "withhold": [
+        "party_keys"
+      ]
+    },
+    {
+      "name": "valid-settled-1.1",
+      "file": "valid-settled-1.1.json",
+      "expect": "valid",
+      "description": "A complete, signed, fully triggered Receipt 1.1: an ES256 and an ML-DSA-65 signature over the same 32-byte digest, both of which must verify. Pure ML-DSA signs the digest bytes as its message; the signature is the raw FIPS 204 byte string in base64url, 4412 characters. Checked against settlement-receipt-1.1.schema.json."
+    },
+    {
+      "name": "missing-mldsa-signature-1.1",
+      "file": "missing-mldsa-signature-1.1.json",
+      "expect": "invalid",
+      "description": "A Receipt that says 1.1 but carries only its ES256 signature. 1.1 is the promise that both are there, so the ES256 signature verifying is not enough. The 1.1 schema catches it first (signatures must contain both algorithms); an implementation that skips schema validation must still reject it at signatures.algorithms.",
+      "breaks": "schema"
+    },
+    {
+      "name": "mldsa-signature-over-hex-string-1.1",
+      "file": "mldsa-signature-over-hex-string-1.1.json",
+      "expect": "invalid",
+      "description": "The ML-DSA-65 signature is over the hex text of receipt_hash rather than the 32 raw bytes, while the ES256 signature is correct. Same mistake as signature-over-hex-string, on the second algorithm: the message ML-DSA signs is the digest bytes, exactly what ES256 signs as a digest. One signature verifying must not carry the other.",
+      "breaks": "signature[sdcstudio-pq-signing-key-v1]"
+    },
+    {
+      "name": "mldsa-signature-wrong-length-1.1",
+      "file": "mldsa-signature-wrong-length-1.1.json",
+      "expect": "invalid",
+      "description": "An ML-DSA-65 signature that is 64 bytes long, the ES256 length. The alg fixes the length (3309 bytes, 4412 base64url characters), so the schema catches it first; an implementation that skips schema validation must still reject it at the signature step on length.",
+      "breaks": "schema"
+    },
+    {
+      "name": "mldsa-signature-unknown-key-1.1",
+      "file": "mldsa-signature-unknown-key-1.1.json",
+      "expect": "invalid",
+      "description": "The ML-DSA-65 signature names a key_id the key document does not hold. A signature that cannot be checked is a failure, not a skip: the ES256 signature verifying must not let the Receipt through.",
+      "breaks": "signature[sdcstudio-pq-signing-key-v9]"
     }
   ]
 }

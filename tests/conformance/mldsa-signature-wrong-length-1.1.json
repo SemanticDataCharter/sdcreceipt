@@ -1,7 +1,7 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "canonicalization": "rfc8785",
-  "receipt_id": "k7m2p9x4qw8vzn3hjt6bcdfg",
+  "receipt_id": "p3xm9kq2wv7nz4hjt8bcdfg6",
   "timestamp": "2026-08-30T14:22:07Z",
   "payload_hash": "125a338bf47fed1214fd8882bec73d5ef063d6e0d385c7dd1695063e0b105cd8",
   "payload_media_type": "application/xml",
@@ -43,23 +43,28 @@
     "triggers": [
       {
         "key_id": "https://vendor.example/.well-known/vsl-key.json",
-        "signature": "a-ecKmJlQK4rjcjDNDxJob1_TbhcdE0e_EO3siN2zwB5fGcMVikFgctXtS65ObV4NeQ6qgxBQdtKi92Kx-8aLA",
+        "signature": "W_5pCNjHKL_GWcRJfHp9veY8njSXQrAAsbMeesOY_YTj16ewLgAwnifS0HXOS7y9c_Xmwlfl8ushgv-j1CEBNw",
         "timestamp": "2026-08-30T15:03:12Z"
       },
       {
         "key_id": "did:web:partner.example",
-        "signature": "DSDTNvBJzqT6cUzXkQr5V19Vk7M1BXy6Rq1R9Y43QPHYFCrTejsVXytK5hndmwzcT6J9TZilOYd7ZHQMkblfLg",
+        "signature": "TElMUfvTnh012YGPOlLBtE1q-FfO34pD4tFSE9P976pwl4HlFVumkkmFwI-Q96Tl_vGCyMhRzuTdRXYCgTIcTg",
         "timestamp": "2026-08-30T16:41:55Z"
       }
     ]
   },
   "previous_hash": null,
-  "receipt_hash": "604a1f6ad1bc7f9aae05598891f1c5b254ceb84f303ad402fb05284de38103fb",
+  "receipt_hash": "540ff5f7d3d854dd72a696ff4026a753448bf7018ef1eafdf063038da4c00b91",
   "signatures": [
     {
       "key_id": "sdcstudio-signing-key-v1",
       "alg": "ES256",
-      "sig": "Q6rql4dohN0B1vxy9jVkiuK4mEu13N4tdNmKfAVMRFttb4MXgFieAUALSUqBakra1T4lr5HHP85CfaUMZdux3A"
+      "sig": "UKSAC7U-pOsO6sbGxX__UTBQm_TstHGotj5q3jAM0u2fsMYMODkzCYBlQQnArgHnqwmjEc-jsVN4lPeQDJO_6A"
+    },
+    {
+      "key_id": "sdcstudio-pq-signing-key-v1",
+      "alg": "ML-DSA-65",
+      "sig": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw"
     }
   ]
 }

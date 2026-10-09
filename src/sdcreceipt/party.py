@@ -254,7 +254,10 @@ def _public_key(pem: Any, key_id: str):
     an ECDSA signature. Handing it an RSA or Ed25519 key raised a `TypeError`
     from deep inside `cryptography` (Lee, F-02); worse, a key on another curve
     would make a verification "succeed" against a key nobody claimed to sign
-    with. The curve is checked here, once, for every key that enters.
+    with. The curve is checked here, once, for every key that enters. Since
+    Receipt 1.1 an issuer also publishes an ML-DSA-65 key (`alg` ML-DSA-65),
+    which is the other type admitted; `verify` checks that a signature's key
+    is the type its `alg` needs.
     """
     if not isinstance(pem, str):
         raise PartyError(f"Key {key_id!r}: public_key_pem must be a PEM string.")
@@ -262,15 +265,19 @@ def _public_key(pem: Any, key_id: str):
         key = serialization.load_pem_public_key(pem.encode("ascii"))
     except Exception as exc:
         raise PartyError(f"Key {key_id!r}: not a readable PEM public key ({exc}).") from exc
-    if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(
-        key.curve, ec.SECP256R1
-    ):
-        raise PartyError(
-            f"Key {key_id!r} is not an ECDSA P-256 public key. ES256 signatures "
-            "can only be checked against P-256, so this key cannot verify a "
-            "Receipt and will not be loaded."
-        )
-    return key
+    if isinstance(key, ec.EllipticCurvePublicKey) and isinstance(key.curve, ec.SECP256R1):
+        return key
+    try:
+        from cryptography.hazmat.primitives.asymmetric import mldsa
+    except ImportError:  # cryptography < 48
+        mldsa = None
+    if mldsa is not None and isinstance(key, mldsa.MLDSA65PublicKey):
+        return key
+    raise PartyError(
+        f"Key {key_id!r} is not an ECDSA P-256 or an ML-DSA-65 public key. ES256 "
+        "signatures can only be checked against P-256 and ML-DSA-65 signatures "
+        "against ML-DSA-65, so this key cannot verify a Receipt and will not be loaded."
+    )
 
 
 def load_key_set(document: Any) -> KeySet:
