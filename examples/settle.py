@@ -11,9 +11,9 @@ Run it:
     pip install sdcreceipt
     python examples/settle.py
 
-No account, no network, no API key. It uses the Receipt shipped in the
-conformance kit, generates two party keys on the spot, has both parties sign,
-and verifies the result. Everything it writes lands in `examples/out/`.
+No account, no network, no API key. It uses the Receipt 1.1 shipped in the
+conformance kit (two issuer signatures, ES256 and ML-DSA-65), generates two
+party keys on the spot, has both parties sign, and verifies the result. Everything it writes lands in `examples/out/`.
 
 ★ Why this file exists. The open question in VSL-PRD §13.6 is not "can a
 counterparty implement this", it is "will a pair try it". A README does not get
@@ -52,7 +52,9 @@ def main() -> int:
     step(1, "The issuer settles, and hands each party a Receipt.")
     # Normally this comes from POST /api/v1/vsl/settle. Here it is the
     # conformance vector, so the example needs no account.
-    receipt = json.loads((KIT / "valid-settled.json").read_text())
+    # Since 4.3.0 this is the 1.1 vector: the issuer signed twice, ES256 and
+    # ML-DSA-65, over the same digest, and both must verify.
+    receipt = json.loads((KIT / "valid-settled-1.1.json").read_text())
     receipt["settlement"]["triggers"] = []
     print(f"   receipt_id      {receipt['receipt_id']}")
     print(f"   condition_hash  {receipt['settlement']['condition_hash'][:32]}...")
