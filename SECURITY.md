@@ -9,7 +9,8 @@ acknowledgement within three business days.
 
 | version | supported |
 |---|---|
-| 4.2.x | yes |
+| 4.3.x | yes (verifies Receipt 1.0 and 1.1) |
+| 4.2.x | yes for Receipt 1.0; a 4.2.x verifier refuses a 1.1 Receipt |
 | earlier | no; 4.2.0 and earlier reported VERIFIED on Receipts whose trigger signatures were never checked |
 
 ## What this tool protects, and what it does not
