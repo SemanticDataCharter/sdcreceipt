@@ -651,3 +651,14 @@ class TestIssuingRefusesToGuess:
         text = exc.explain()
         assert "review" in text
         assert "draft -> review -> published" in text
+
+
+def test_the_cli_mcp_subcommand_runs_the_server(monkeypatch):
+    """The registry launches `sdcreceipt mcp ...`; the CLI must hand the rest of the line to the server's parser."""
+    from sdcreceipt import cli
+    import sdcreceipt.mcp_server as srv
+
+    seen = {}
+    monkeypatch.setattr(srv, "main", lambda argv=None: seen.setdefault("argv", argv))
+    rc = cli.main(["mcp", "--key-id", "https://example.org/k"])
+    assert rc == 0 and seen["argv"] == ["--key-id", "https://example.org/k"]
