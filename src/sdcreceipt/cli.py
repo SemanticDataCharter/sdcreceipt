@@ -457,20 +457,28 @@ def build_parser() -> argparse.ArgumentParser:
     # registry entry passes `mcp` as its one positional argument and lands here. Everything after `mcp` goes to the
     # server's own parser (--key, --key-id, --endpoint, --token), exactly as `sdcreceipt-mcp` takes it.
     p = sub.add_parser("mcp", help="run the MCP stdio server (same arguments as sdcreceipt-mcp)")
-    p.add_argument("mcp_args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_mcp)
 
     return parser
 
 
 def cmd_mcp(args) -> int:
+    # Reached only for a bare `sdcreceipt mcp`; `main()` hands any further arguments straight to the server's parser
+    # before this parser sees them, since argparse would otherwise reject the server's options as unknown.
     from sdcreceipt.mcp_server import main as mcp_main
 
-    mcp_main(list(args.mcp_args))
+    mcp_main([])
     return 0
 
 
 def main(argv=None) -> int:
+    argv = list(sys.argv[1:]) if argv is None else list(argv)
+    if argv[:1] == ["mcp"]:
+        # ★ The registry launches `sdcreceipt mcp [server options]`; the server owns those options.
+        from sdcreceipt.mcp_server import main as mcp_main
+
+        mcp_main(argv[1:])
+        return 0
     args = build_parser().parse_args(argv)
     return args.func(args)
 
