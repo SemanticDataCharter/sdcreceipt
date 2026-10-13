@@ -6,6 +6,13 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+## [4.3.1] - 2026-10-13
+
+Fixed: the MCP registry launches a package by its bare command, and `sdcreceipt` is the CLI, so a
+registry launch (`uvx sdcreceipt`) opened the CLI's usage text instead of the server. The CLI gains an
+`mcp` subcommand that runs the server with the same arguments as `sdcreceipt-mcp`, and `server.json`
+passes `mcp` as its one positional argument. No change to verification, signing or settlement.
+
 ## [4.3.0] - 2026-10-09
 
 Receipt 1.1: the same content signed twice, `ES256` and `ML-DSA-65` (FIPS 204,

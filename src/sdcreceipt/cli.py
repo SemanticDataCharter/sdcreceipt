@@ -453,7 +453,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--submit", metavar="URL", help="POST it rather than printing it")
     p.set_defaults(func=cmd_trigger)
 
+    # ★ The MCP registry launches the package by its bare name (`uvx sdcreceipt`), which is this CLI, so the
+    # registry entry passes `mcp` as its one positional argument and lands here. Everything after `mcp` goes to the
+    # server's own parser (--key, --key-id, --endpoint, --token), exactly as `sdcreceipt-mcp` takes it.
+    p = sub.add_parser("mcp", help="run the MCP stdio server (same arguments as sdcreceipt-mcp)")
+    p.add_argument("mcp_args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_mcp)
+
     return parser
+
+
+def cmd_mcp(args) -> int:
+    from sdcreceipt.mcp_server import main as mcp_main
+
+    mcp_main(list(args.mcp_args))
+    return 0
 
 
 def main(argv=None) -> int:
