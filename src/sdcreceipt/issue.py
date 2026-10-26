@@ -113,18 +113,29 @@ def open_without_redirects(request, *, timeout: float):
     reason to redirect a POST, so a redirect is an error that names where it
     pointed, and the person decides whether to use that URL directly.
     """
+    import urllib.error
     import urllib.request
+
+    def refuse(url, code, newurl):
+        return SettleError(
+            f"{url} answered {code} with a redirect to {newurl!r}; refusing "
+            "to follow it, because the request carries a token or a signature and "
+            "the new host was never checked. If that is the right address, use it "
+            "directly."
+        )
 
     class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
-            raise SettleError(
-                f"{req.full_url} answered {code} with a redirect to {newurl!r}; refusing "
-                "to follow it, because the request carries a token or a signature and "
-                "the new host was never checked. If that is the right address, use it "
-                "directly."
-            )
+            raise refuse(req.full_url, code, newurl)
 
-    return urllib.request.build_opener(_RefuseRedirect).open(request, timeout=timeout)
+    try:
+        return urllib.request.build_opener(_RefuseRedirect).open(request, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        # A 3xx the handler does not know (308 before Python 3.11) arrives here
+        # unfollowed; it is still a redirect, and still refused by name.
+        if 300 <= exc.code < 400:
+            raise refuse(request.full_url, exc.code, exc.headers.get("Location", "")) from exc
+        raise
 
 
 class SettleRejected(SettleError):
