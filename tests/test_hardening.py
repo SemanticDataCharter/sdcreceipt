@@ -361,7 +361,7 @@ class TestKeyPathStaysOut:
 # --- multiple --keys -------------------------------------------------------
 
 class TestSeveralKeyDocuments:
-    def test_the_cli_merges_issuer_and_party_documents(self, tmp_path, settled, capsys):
+    def test_the_cli_takes_issuer_and_party_documents_separately(self, tmp_path, settled, capsys):
         doc = json.loads((KIT / "keys.json").read_text())
         paths = []
         for name, group in (("issuer", doc["issuer_keys"]), ("parties", doc["party_keys"])):
@@ -371,6 +371,6 @@ class TestSeveralKeyDocuments:
             paths.append(str(p))
         receipt_path = tmp_path / "r.json"
         receipt_path.write_text(json.dumps(settled))
-        rc = cli.main(["verify", str(receipt_path), "--keys", paths[0], "--keys", paths[1]])
+        rc = cli.main(["verify", str(receipt_path), "--issuer-keys", paths[0], "--party-keys", paths[1]])
         out = capsys.readouterr().out
         assert rc == 0 and "VERIFIED" in out and "settlement.complete" in out

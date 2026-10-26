@@ -9,7 +9,8 @@ acknowledgement within three business days.
 
 | version | supported |
 |---|---|
-| 4.3.x | yes (verifies Receipt 1.0 and 1.1) |
+| 4.3.3 and later | yes (verifies Receipt 1.0 and 1.1) |
+| 4.2.2 to 4.3.2 | upgrade: the `verify` CLI pooled every `--keys` document and let the Receipt assign the issuer role (GHSA-gwhr-82j5-883w); the library and the MCP tool are not affected |
 | 4.2.1 to 4.2.4 | yes for Receipt 1.0; a 4.2.x verifier refuses a 1.1 Receipt |
 | earlier | no; 4.2.0 and earlier reported VERIFIED on Receipts whose trigger signatures were never checked |
 

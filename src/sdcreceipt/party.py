@@ -245,6 +245,26 @@ class KeySet(dict):
         self.status.update(other.status)
         return self
 
+    def add_document(self, other: "KeySet", source: str) -> "KeySet":
+        """
+        Add one key document's keys, refusing any key_id already held.
+
+        ★ ``merge`` is last-wins: a document read later could replace a key
+        an earlier one published under the same key_id, or clear its
+        ``revoked`` status, and the verifier would never know (Lee, 4.3.x
+        review, F-02). A verifier holding several documents uses this
+        instead. A key_id is one key, published once; two documents claiming
+        it is a conflict to be resolved by a person, not by load order.
+        """
+        clash = sorted(set(self) & set(other))
+        if clash:
+            raise PartyError(
+                f"{source} publishes key_id {clash[0]!r}, which another key document "
+                "already supplied. A key_id must come from exactly one document; "
+                "refusing rather than letting one replace the other."
+            )
+        return self.merge(other)
+
 
 def _public_key(pem: Any, key_id: str):
     """
@@ -306,6 +326,9 @@ def load_key_set(document: Any) -> KeySet:
         pem = entry.get("public_key_pem")
         key_id = entry.get("key_id")
         if pem and isinstance(key_id, str):
+            if key_id in keys:
+                # The same last-wins problem inside one document (F-02).
+                raise PartyError(f"Key {key_id!r} is listed more than once in one key document.")
             keys[key_id] = _public_key(pem, key_id)
             status = entry.get("status")
             if isinstance(status, str):
@@ -330,10 +353,34 @@ def load_key_set(document: Any) -> KeySet:
     return keys
 
 
+def strict_json_loads(text: str):
+    """
+    ``json.loads``, refusing what two parsers could read differently.
+
+    ★ Python keeps the last of two identical object keys; another
+    implementation may keep the first, and then the two read different
+    documents from the same bytes (Lee, 4.3.x review, F-06). Nesting deep
+    enough to exhaust the parser is refused as a ValueError rather than
+    surfacing as a RecursionError traceback (F-05).
+    """
+    def no_duplicates(pairs):
+        seen = {}
+        for key, value in pairs:
+            if key in seen:
+                raise ValueError(f"duplicate object key {key!r}")
+            seen[key] = value
+        return seen
+
+    try:
+        return json.loads(text, object_pairs_hook=no_duplicates)
+    except RecursionError:
+        raise ValueError("nested too deeply to read") from None
+
+
 def load_key_set_file(path: Path) -> KeySet:
     try:
-        return load_key_set(json.loads(path.read_text()))
-    except json.JSONDecodeError as exc:
+        return load_key_set(strict_json_loads(path.read_text()))
+    except ValueError as exc:  # JSONDecodeError is a ValueError
         raise PartyError(f"{path} is not valid JSON: {exc}") from exc
     except FileNotFoundError:
         raise PartyError(f"no key document at {path}") from None

@@ -75,15 +75,15 @@ jobs:
           python - <<'PY'
           import json
           d = json.load(open("keys.json"))
-          merged = {"keys": [{"key_id": k, "public_key_pem": v}
-                             for k, v in {**d["issuer_keys"], **d["party_keys"]}.items()]}
-          json.dump(merged, open("merged-keys.json", "w"))
+          for name in ("issuer_keys", "party_keys"):
+              doc = {"keys": [{"key_id": k, "public_key_pem": v} for k, v in d[name].items()]}
+              json.dump(doc, open(f"{name}.json", "w"))
           PY
-          sdcreceipt verify valid-settled.json --keys merged-keys.json
+          sdcreceipt verify valid-settled.json --issuer-keys issuer_keys.json --party-keys party_keys.json
       - name: --schema reports the missing extra instead of a traceback
         run: |
           cd tests/conformance
-          out=$(sdcreceipt verify valid-settled.json --keys merged-keys.json \
+          out=$(sdcreceipt verify valid-settled.json --issuer-keys issuer_keys.json --party-keys party_keys.json \
                   --schema settlement-receipt-1.0.schema.json 2>&1) && rc=0 || rc=$?
           echo "$out"
           if echo "$out" | grep -q "Traceback"; then
