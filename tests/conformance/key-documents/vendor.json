@@ -1,0 +1,17 @@
+{
+  "issuer": "https://vendor.example/.well-known/vsl-key.json",
+  "keys": [
+    {
+      "key_id": "https://vendor.example/.well-known/vsl-key.json",
+      "alg": "ES256",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvAkaeYgOJR/HTmkRbwgmx071Da19\nXEgVaHF+LQYNPRBQvttCnFTluOx6a43S9Zcf/cE5xVY7ODKrDd57nhkWHg==\n-----END PUBLIC KEY-----\n",
+      "status": "active"
+    },
+    {
+      "key_id": "https://vendor.example/.well-known/vsl-key.json#k2",
+      "alg": "ES256",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEOP5v3Grv93JqQoyH0PtNHurvNnIO\nN3WLc/oAwzz4G0i4TkPuQZhtA8QufZ2yC5E7hwJme86QLL+/+ddCYIr+ug==\n-----END PUBLIC KEY-----\n",
+      "status": "active"
+    }
+  ]
+}
