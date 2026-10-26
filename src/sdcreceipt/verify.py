@@ -140,6 +140,12 @@ def _b64url_to_raw(value: Any, alg: str = "ES256") -> bytes:
     raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
     if len(raw) != length:
         raise ValueError(f"expected a {length}-byte {alg} signature, got {len(raw)} bytes")
+    # ★ 86 characters carry 516 bits for 512, so the last character has
+    # unused bits and 16 spellings decoded to one ES256 signature (Lee,
+    # 4.3.x review, F-04). Only the spelling that re-encodes exactly is the
+    # one the specification produces.
+    if base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii") != value:
+        raise ValueError("not the canonical base64url spelling of its bytes")
     return raw
 
 
@@ -181,6 +187,10 @@ def _verify_ecdsa(public_key, message: bytes, signature: str, *, prehashed: bool
         raw = _b64url_to_raw(signature)
     except Exception as exc:
         return f"malformed signature: {exc}"
+    # ★ An ES256 signature or a trigger naming an ML-DSA-65 key reached
+    # ECDSA's verify and ended in a traceback (Lee, 4.3.x review, F-05).
+    if not isinstance(public_key, ec.EllipticCurvePublicKey):
+        return "the stated key is not an ECDSA P-256 key"
 
     algorithm = (
         ec.ECDSA(utils.Prehashed(hashes.SHA256()))
@@ -500,7 +510,7 @@ def verify(
             False,
             "cannot establish: no party keys were supplied, so no trigger "
             "signature was checked. Pass the parties' published keys in "
-            "--keys, or read this Receipt as unsettled",
+            "--party-keys, or read this Receipt as unsettled",
         )
     else:
         complete = bool(parties) and {t.get("key_id") for t in triggers} >= set(parties)

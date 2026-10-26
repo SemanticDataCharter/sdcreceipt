@@ -18,7 +18,7 @@ pip install sdcreceipt
 
 ```bash
 # Check a Receipt you were sent. Offline.
-sdcreceipt verify receipt.json --keys issuer-keys.json
+sdcreceipt verify receipt.json --issuer-keys issuer-keys.json --party-keys party-keys.json
 
 # Set yourself up as a party: keypair + the document to publish.
 sdcreceipt init --key-id https://vendor.example/.well-known/vsl-key.json
@@ -118,9 +118,18 @@ curl -o receipt.json https://sdcstudio.axius-sdc.com/api/v1/vsl/receipt/<receipt
 curl -O https://sdcstudio.axius-sdc.com/.well-known/sdcstudio-signing-keys.json
 curl -o vendor-keys.json  https://vendor.example/.well-known/vsl-key.json
 curl -o partner-keys.json https://partner.example/.well-known/did.json
-sdcreceipt verify receipt.json \
-    --keys sdcstudio-signing-keys.json --keys vendor-keys.json --keys partner-keys.json
+sdcreceipt verify receipt.json --issuer-keys sdcstudio-signing-keys.json \
+    --party-keys vendor-keys.json --party-keys partner-keys.json
 ```
+
+The issuer's document checks the issuer's signatures; each party's document checks only that party's trigger.
+The roles come from your command line, never from the Receipt, and a key_id that two documents claim is refused.
+Since 4.3.3 the old `--keys` flag is refused: it pooled every document, which let a party's own document supply
+an issuer key (GHSA-gwhr-82j5-883w).
+
+After the checks, `verify` lists what VERIFIED does not cover: trigger timestamps are not signed, key validity
+windows are not compared with the Receipt's time, a chain link (`previous_hash`) is not followed, and the payload
+and governance Receipt are checked only if you pass them.
 
 Every check is reported, not just the first failure:
 
@@ -158,7 +167,7 @@ anyone having to disclose what was exchanged. If you also hold the payload or
 the governance Receipt, pass them and those get checked too:
 
 ```bash
-sdcreceipt verify receipt.json --keys keys.json \
+sdcreceipt verify receipt.json --issuer-keys issuer-keys.json --party-keys party-keys.json \
     --payload manifest.xml --governance governance-receipt.json
 ```
 

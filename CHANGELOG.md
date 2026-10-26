@@ -6,6 +6,33 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+## [4.3.3] - 2026-10-26
+
+From Timothy Lee's release assurance review of 4.3.x (October 2026). The library (`verify()` with separate
+`issuer_keys` and `party_keys`) and the MCP verify tool were not affected by F-01 or F-02.
+
+### Security
+- **F-01 (GHSA-gwhr-82j5-883w).** `verify` pooled every `--keys` document and treated whichever key ids the Receipt's
+  own `signatures` named as the issuer's, so a party that added a key to its own published document could sign a
+  Receipt as the issuer and reach VERIFIED. The CLI now takes `--issuer-keys` and `--party-keys` separately; the
+  Receipt never decides a key's role. `--keys` is refused with instructions (exit 2).
+- **F-02.** Key documents merged last-wins, so a later document could replace a key or clear a `revoked` status.
+  A key_id supplied by two documents, listed twice in one, or given in both roles is now refused.
+
+### Fixed
+- **F-04.** An ES256 signature is accepted only in its canonical base64url spelling; 16 spellings of the last
+  character decoded to the same bytes.
+- **F-05.** A signature or trigger naming a key of the wrong type, and JSON nested too deeply to read, end in a FAIL
+  line or an error message instead of a traceback.
+- **F-06.** A Receipt or key document with a duplicate object key is refused; two parsers could otherwise read
+  different documents from the same bytes.
+
+### Added
+- After its checks, `verify` lists what VERIFIED does not cover (F-03, F-11, F-12, F-13): trigger timestamps are not
+  signed, key validity windows are not compared with the Receipt's time, `previous_hash` is not followed, the payload
+  and governance Receipt are checked only when given, and the issuer's signed record of the payload's validation.
+  The exit code is unchanged.
+
 ## [4.3.2] - 2026-10-25
 
 ### Security

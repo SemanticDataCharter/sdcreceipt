@@ -5,7 +5,7 @@
 """
 Command line interface.
 
-    sdcreceipt verify  receipt.json --keys keys.json
+    sdcreceipt verify  receipt.json --issuer-keys issuer.json --party-keys party.json
     sdcreceipt init    --key-id https://vendor.example/.well-known/vsl-key.json
     sdcreceipt settle  payload.xml --party <id> --party <id>
     sdcreceipt trigger receipt.json --key party.pem --key-id <id>
@@ -31,6 +31,7 @@ from sdcreceipt import __version__
 from sdcreceipt.party import (
     PartyError,
     generate_key,
+    strict_json_loads,
     key_document,
     load_key_set_file,
     load_private_key,
@@ -53,10 +54,10 @@ from sdcreceipt.verify import verify
 
 def _load_json(path: Path, what: str) -> dict:
     try:
-        return json.loads(path.read_text())
+        return strict_json_loads(path.read_text())
     except FileNotFoundError:
         raise SystemExit(f"error: no {what} at {path}")
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:  # JSONDecodeError, a duplicate key, or too deep
         raise SystemExit(f"error: {path} is not valid JSON: {exc}")
 
 
@@ -79,34 +80,49 @@ def _load_receipt(path: Path) -> dict:
     return receipt
 
 
+#: Printed when `--keys` is used. Since 4.3.3 the verifier, not the Receipt, says which document is whose.
+KEYS_REFUSED = (
+    "error: --keys is no longer accepted. Say which document is whose:\n"
+    "  --issuer-keys FILE   the issuer's published key document (its signatures)\n"
+    "  --party-keys FILE    each party's published key document (their triggers); repeat per party\n"
+    "Before 4.3.3 every --keys document was pooled and the Receipt decided which keys counted as the "
+    "issuer's, so a party's own document could supply an 'issuer' key (GHSA-gwhr-82j5-883w)."
+)
+
+
+def _key_documents(paths, role: str) -> KeySet:
+    """Every key document given for one role, refusing a key_id that two of them claim."""
+    keys = KeySet()
+    for path in paths or []:
+        try:
+            keys.add_document(load_key_set_file(Path(path)), f"{role} document {path}")
+        except PartyError as exc:
+            raise SystemExit(f"error: {exc}")
+    return keys
+
+
 def cmd_verify(args) -> int:
+    if args.keys:
+        print(KEYS_REFUSED, file=sys.stderr)
+        return 2
     receipt = _load_receipt(Path(args.receipt))
 
-    issuer_keys: dict = {}
-    party_keys = None
-    if args.keys:
-        # --keys may be given more than once: the issuer publishes one
-        # document and each party publishes their own, and a verifier holds
-        # all of them. Before 4.2.2 they had to be merged by hand first.
-        keyset = KeySet()
-        for path in args.keys:
-            try:
-                keyset.merge(load_key_set_file(Path(path)))
-            except PartyError as exc:
-                raise SystemExit(f"error: {exc}")
-        # The Receipt says which id is which. Both halves keep their status.
-        signatures = receipt.get("signatures", []) if isinstance(receipt, dict) else []
-        issuer_ids = {
-            s.get("key_id") for s in signatures if isinstance(s, dict)
-        }
-        issuer_keys, party_keys = KeySet(), KeySet()
-        for key_id, key in keyset.items():
-            target = issuer_keys if key_id in issuer_ids else party_keys
-            target[key_id] = key
-            if key_id in keyset.status:
-                target.status[key_id] = keyset.status[key_id]
-        if not party_keys:
-            party_keys = None
+    # ★ The roles come from the command line, never from the Receipt. Before
+    # 4.3.3 every document was pooled and whichever key ids the Receipt's
+    # own `signatures` named were treated as the issuer's, so a party that
+    # added a key to its own published document could sign as the issuer
+    # and reach VERIFIED (Lee, 4.3.x review, F-01). The library and the MCP
+    # tool always took the two sets apart; the CLI now does too.
+    issuer_keys = _key_documents(args.issuer_keys, "issuer")
+    party_keys = _key_documents(args.party_keys, "party")
+    both = sorted(set(issuer_keys) & set(party_keys))
+    if both:
+        raise SystemExit(
+            f"error: key_id {both[0]!r} appears in both an issuer and a party document. "
+            "One key has one role; refusing to guess which."
+        )
+    if not party_keys:
+        party_keys = None
 
     schema = _load_json(Path(args.schema), "schema") if args.schema else None
     governance = (
@@ -126,18 +142,53 @@ def cmd_verify(args) -> int:
     )
 
     print(result)
+    _print_not_checked(receipt, args)
     if result.ok:
         print("\nVERIFIED")
         return 0
 
     print(f"\nNOT VERIFIED - {len(result.failures)} check(s) failed")
-    if not args.keys:
+    if not args.issuer_keys:
         print(
-            "\nNo --keys given, so no signature could be checked. Fetch the "
+            "\nNo --issuer-keys given, so no signature could be checked. Fetch the "
             "issuer's published key set and pass it; never take a key from a "
             "location inside the Receipt."
         )
     return 1
+
+
+def _print_not_checked(receipt, args) -> None:
+    """
+    Say what VERIFIED does not cover, so nobody reads it as more than it is.
+
+    ★ Lee's 4.3.x review (F-03, F-11, F-12, F-13): trigger timestamps are not
+    signed, key validity windows are not compared with the Receipt's time,
+    the chain link is not followed, and the Receipt's own record of the
+    payload's validation is signed but was never shown. None of these
+    changes the exit code; each is a limit a reader should see.
+    """
+    if not isinstance(receipt, dict):
+        return
+    notes = [
+        "trigger timestamps are not signed; they are advisory",
+        "key validity windows (not_before, not_after) are not compared with the Receipt's timestamp",
+    ]
+    if receipt.get("previous_hash"):
+        notes.append("previous_hash is not followed; the earlier Receipt in the chain was not checked")
+    if not args.governance:
+        notes.append("no governance Receipt given, so the verdict's binding was not checked (--governance)")
+    if not args.payload:
+        notes.append("no payload given, so payload_hash was not checked (--payload)")
+    validation = receipt.get("validation")
+    if isinstance(validation, dict) and "valid" in validation:
+        injected = validation.get("ev_injections") or []
+        state = "valid" if validation.get("valid") else "not valid as received"
+        if validation.get("recovered") and injected:
+            state += f"; {len(injected)} value(s) recorded as Exceptional Values"
+        notes.append(f"the issuer recorded the payload as {state} (signed, reported here, not judged)")
+    print("\nNot covered by this result:")
+    for note in notes:
+        print(f"  NOTE  {note}")
 
 
 def cmd_init(args) -> int:
@@ -407,11 +458,20 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("verify", help="verify a Receipt (no network, no account)")
     p.add_argument("receipt")
     p.add_argument(
-        "--keys",
+        "--issuer-keys",
+        dest="issuer_keys",
         action="append",
         metavar="FILE",
-        help="a published key document (JSON); repeat for the issuer's and each party's",
+        help="the issuer's published key document (JSON); checks the issuer signatures",
     )
+    p.add_argument(
+        "--party-keys",
+        dest="party_keys",
+        action="append",
+        metavar="FILE",
+        help="a party's published key document (JSON); repeat for each party; checks the triggers",
+    )
+    p.add_argument("--keys", action="append", metavar="FILE", help=argparse.SUPPRESS)
     p.add_argument("--schema", help="the published JSON Schema")
     p.add_argument("--governance", help="the governance Receipt, if held")
     p.add_argument("--payload", help="the payload, if held")
