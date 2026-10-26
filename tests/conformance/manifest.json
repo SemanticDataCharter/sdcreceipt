@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "vectors": [
     {
       "name": "valid-settled",
@@ -80,6 +80,13 @@
       ]
     },
     {
+      "name": "issuer-signature-by-a-party-key",
+      "file": "issuer-signature-by-a-party-key.json",
+      "expect": "invalid",
+      "description": "The issuer signature is made with a key the vendor publishes in its own key document, and names that key. The signature is genuine and the content untouched, so the only reason to refuse is the role: a key you hold as a party's is never an issuer key, whatever the Receipt's signatures name. A forger who controls a party's document would change the content and re-sign this way. Regression vector for the sdcreceipt CLI defect GHSA-gwhr-82j5-883w (Lee, 4.3.x review F-01).",
+      "breaks": "signature[https://vendor.example/.well-known/vsl-key.json#k2]"
+    },
+    {
       "name": "valid-settled-1.1",
       "file": "valid-settled-1.1.json",
       "expect": "valid",
@@ -112,6 +119,83 @@
       "expect": "invalid",
       "description": "The ML-DSA-65 signature names a key_id the key document does not hold. A signature that cannot be checked is a failure, not a skip: the ES256 signature verifying must not let the Receipt through.",
       "breaks": "signature[sdcstudio-pq-signing-key-v9]"
+    }
+  ],
+  "key_documents": [
+    {
+      "name": "issuer-and-two-parties",
+      "expect": "accepted",
+      "description": "The ordinary arrangement: the issuer's document, then one per party. The vendor's document publishes a second key; that is allowed, and it is a party key. With these keys valid-settled verifies and issuer-signature-by-a-party-key does not.",
+      "documents": [
+        {
+          "role": "issuer",
+          "file": "issuer.json"
+        },
+        {
+          "role": "party",
+          "file": "vendor.json"
+        },
+        {
+          "role": "party",
+          "file": "partner.json"
+        }
+      ]
+    },
+    {
+      "name": "same-key-id-in-two-documents",
+      "expect": "refused",
+      "description": "The vendor's document publishes a different key under the issuer's key_id. A verifier that merges documents last-wins would replace the issuer's key with the vendor's. A key_id must come from exactly one document (Lee, 4.3.x review F-02).",
+      "documents": [
+        {
+          "role": "issuer",
+          "file": "issuer.json"
+        },
+        {
+          "role": "party",
+          "file": "vendor-republishes-issuer-key.json"
+        }
+      ]
+    },
+    {
+      "name": "revocation-cleared-by-a-later-document",
+      "expect": "refused",
+      "description": "The first document marks the issuer's ES256 key revoked; a second lists the same key_id as active. Last-wins would clear the revocation. Refuse rather than choose (F-02).",
+      "documents": [
+        {
+          "role": "issuer",
+          "file": "issuer-key-revoked.json"
+        },
+        {
+          "role": "issuer",
+          "file": "issuer-key-reactivated.json"
+        }
+      ]
+    },
+    {
+      "name": "key-id-listed-twice-in-one-document",
+      "expect": "refused",
+      "description": "One document lists the issuer's key_id twice, with different keys. Which one a parser keeps depends on the parser; refuse the document (F-02).",
+      "documents": [
+        {
+          "role": "issuer",
+          "file": "issuer-key-listed-twice.json"
+        }
+      ]
+    },
+    {
+      "name": "one-document-in-both-roles",
+      "expect": "refused",
+      "description": "The issuer's document is also given as a party document, so its keys would hold both roles. One key has one role (F-01).",
+      "documents": [
+        {
+          "role": "issuer",
+          "file": "issuer.json"
+        },
+        {
+          "role": "party",
+          "file": "issuer.json"
+        }
+      ]
     }
   ]
 }

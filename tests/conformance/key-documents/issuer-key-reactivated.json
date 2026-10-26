@@ -1,0 +1,11 @@
+{
+  "issuer": "https://sdcstudio.example",
+  "keys": [
+    {
+      "key_id": "sdcstudio-signing-key-v1",
+      "alg": "ES256",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYVZpJggblm7w9Xly1b+1jxl+q0XF\nAy3EeeqU1pqv5k8Kohiq5A65crHXCaeuH/6kP08cubw9P2hvBGloW43/1A==\n-----END PUBLIC KEY-----\n",
+      "status": "active"
+    }
+  ]
+}

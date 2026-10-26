@@ -70,7 +70,42 @@ def run(kit, filename, withhold=()):
 
 
 def test_the_kit_is_present(kit):
-    assert len(kit["manifest"]["vectors"]) == 16
+    assert len(kit["manifest"]["vectors"]) == 17
+    assert len(kit["manifest"]["key_documents"]) == 5
+
+
+@pytest.mark.parametrize("case", json.loads((KIT / "manifest.json").read_text())["key_documents"],
+                         ids=lambda c: c["name"])
+def test_every_key_document_case_behaves_as_the_manifest_says(case, tmp_path, capsys):
+    """
+    The kit's key-document cases (Lee's 4.3.x review, F-01 and F-02), run
+    through the real command line: each document given in the role the case
+    names, against valid-settled. Accepted means it verifies; refused means
+    the CLI stops before any verdict.
+    """
+    from sdcreceipt import cli
+
+    args = ["verify", str(KIT / "valid-settled.json")]
+    for document in case["documents"]:
+        args += [f"--{document['role']}-keys", str(KIT / "key-documents" / document["file"])]
+    try:
+        rc = cli.main(args)
+        outcome = "accepted" if rc == 0 else f"exit {rc}"
+    except SystemExit as exc:
+        outcome = "refused" if str(exc).startswith("error:") else f"exit {exc}"
+    assert outcome == case["expect"], capsys.readouterr().out
+
+
+def test_the_party_key_vector_fails_even_with_the_accepted_documents(capsys):
+    """issuer-signature-by-a-party-key must fail with the documents a verifier would really hold."""
+    from sdcreceipt import cli
+
+    docs = KIT / "key-documents"
+    rc = cli.main(["verify", str(KIT / "issuer-signature-by-a-party-key.json"),
+                   "--issuer-keys", str(docs / "issuer.json"),
+                   "--party-keys", str(docs / "vendor.json"), "--party-keys", str(docs / "partner.json")])
+    out = capsys.readouterr().out
+    assert rc == 1 and "no key held for 'https://vendor.example/.well-known/vsl-key.json#k2'" in out
 
 
 def test_every_vector_behaves_as_the_manifest_says(kit):

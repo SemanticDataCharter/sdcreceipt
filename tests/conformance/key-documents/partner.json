@@ -1,0 +1,11 @@
+{
+  "issuer": "did:web:partner.example",
+  "keys": [
+    {
+      "key_id": "did:web:partner.example",
+      "alg": "ES256",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWlkYhKwr2nTfmkqf8GOtlWpiIkJp\na5xV28gVBWgB3FkovWeS9t6wN/uCxAVRhgRsm1s9TldusZv8kh8eRyVKgQ==\n-----END PUBLIC KEY-----\n",
+      "status": "active"
+    }
+  ]
+}
