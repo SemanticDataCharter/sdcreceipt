@@ -6,6 +6,11 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+### Tests
+- The conformance kit is now 1.1, from SDCStudio: 17 vectors, including `issuer-signature-by-a-party-key` (F-01), and 5
+  key-document cases (F-01, F-02), run here through the real command line. The new vector verifies on 4.3.2 with the old
+  pooled `--keys` and fails on 4.3.3 and later. From Timothy Lee's review of 4.3.3, finding F-16.
+
 ## [4.3.4] - 2026-10-26
 
 From Timothy Lee's release assurance review of 4.3.3 (October 2026), which confirmed the 4.3.3 fixes.

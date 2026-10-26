@@ -42,12 +42,12 @@
     "triggers": [
       {
         "key_id": "https://vendor.example/.well-known/vsl-key.json",
-        "signature": "a-ecKmJlQK4rjcjDNDxJob1_TbhcdE0e_EO3siN2zwB5fGcMVikFgctXtS65ObV4NeQ6qgxBQdtKi92Kx-8aLA",
+        "signature": "wU3GCnn_B00qoH7lNpaL7nxL5RMJsJ34iU31ngGl7IAx-88WGrVuGTgWqPY8aZmrIwK9tPD5s6KQlpX1lW1WDA",
         "timestamp": "2026-08-30T15:03:12Z"
       },
       {
         "key_id": "did:web:partner.example",
-        "signature": "DSDTNvBJzqT6cUzXkQr5V19Vk7M1BXy6Rq1R9Y43QPHYFCrTejsVXytK5hndmwzcT6J9TZilOYd7ZHQMkblfLg",
+        "signature": "a4yf6l_buVKxFBMgXpEoUDsLCQvN3b5TDHpmUcAylBD5fY65OkU4R14NSItwguyRMvKV8ATj-7muJCSvNcxGng",
         "timestamp": "2026-08-30T16:41:55Z"
       }
     ]
@@ -58,7 +58,7 @@
     {
       "key_id": "sdcstudio-signing-key-v1",
       "alg": "ES256",
-      "sig": "v_GSr8YG0tSshlbElQWNlLLSTDi_xSKQ3g62r0A7jtznGef2uYhFJ1o7v0k_-40bval3ljGrYvh5DwRI5unPIg"
+      "sig": "pnwYds171PTxUbNgU2WcibsE9ADxr2pEB4bHBPa6iZgSVJzwDbRlW8u5iDTPuKxpahriRgIatLnCdTtetEynoA"
     }
   ]
 }
