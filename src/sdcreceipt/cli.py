@@ -42,6 +42,7 @@ from sdcreceipt.party import (
 from sdcreceipt.issue import (
     DEFAULT_ENDPOINT,
     SettleError,
+    open_without_redirects,
     SettleRejected,
     check_endpoint,
     payload_current_state,
@@ -105,6 +106,18 @@ def cmd_verify(args) -> int:
     if args.keys:
         print(KEYS_REFUSED, file=sys.stderr)
         return 2
+    if not args.issuer_keys:
+        # ★ Without the issuer's document no signature can be checked, so the
+        # run could only end NOT VERIFIED. Say so as a usage error, like --keys,
+        # rather than letting it look like a verdict about the Receipt (Lee,
+        # 4.3.3 review, F-17).
+        print(
+            "error: --issuer-keys FILE is required: the issuer's published key document "
+            "(SDCStudio's is https://sdcstudio.axius-sdc.com/.well-known/sdcstudio-signing-keys.json). "
+            "Never take a key from a location inside the Receipt.",
+            file=sys.stderr,
+        )
+        return 2
     receipt = _load_receipt(Path(args.receipt))
 
     # ★ The roles come from the command line, never from the Receipt. Before
@@ -148,12 +161,6 @@ def cmd_verify(args) -> int:
         return 0
 
     print(f"\nNOT VERIFIED - {len(result.failures)} check(s) failed")
-    if not args.issuer_keys:
-        print(
-            "\nNo --issuer-keys given, so no signature could be checked. Fetch the "
-            "issuer's published key set and pass it; never take a key from a "
-            "location inside the Receipt."
-        )
     return 1
 
 
@@ -260,9 +267,12 @@ def cmd_trigger(args) -> int:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with open_without_redirects(request, timeout=30) as response:
             print(response.read().decode("utf-8"))
         return 0
+    except SettleError as exc:  # a redirect, refused (F-14)
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     except urllib.error.HTTPError as exc:
         print(f"error: {exc.code} from {args.submit}", file=sys.stderr)
         print(exc.read().decode("utf-8", errors="replace"), file=sys.stderr)
