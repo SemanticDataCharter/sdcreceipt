@@ -6,6 +6,23 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+## [4.3.4] - 2026-10-26
+
+From Timothy Lee's release assurance review of 4.3.3 (October 2026), which confirmed the 4.3.3 fixes.
+
+### Security
+- **F-14.** `settle` and `trigger --submit` followed HTTP redirects to hosts nobody had checked, possibly over plain
+  http, and urllib carried the `Authorization` header with them. A redirect is now refused with an error naming
+  where it pointed (`open_without_redirects`), so a token or signature only ever goes to the URL that was checked.
+
+### Changed
+- **F-17.** `verify` without `--issuer-keys` is a usage error (exit 2), like `--keys`, rather than a NOT VERIFIED that
+  reads like a verdict about the Receipt.
+
+### CI
+- **F-08.** Every GitHub Action is pinned to a commit SHA; Dependabot keeps the pins current.
+- A `pip-audit` job checks the installed dependency tree on every push (RA-5).
+
 ## [4.3.3] - 2026-10-26
 
 From Timothy Lee's release assurance review of 4.3.x (October 2026). The library (`verify()` with separate
