@@ -102,6 +102,42 @@ def check_endpoint(url: str, *, what: str = "endpoint") -> str:
     )
 
 
+def open_without_redirects(request, *, timeout: float):
+    """
+    Send ``request`` and refuse to follow a redirect.
+
+    ★ ``check_endpoint`` vets the URL a person typed, and urllib's default
+    opener then follows any redirect the server answers with, to a host
+    nobody checked, possibly over plain http, carrying the ``Authorization``
+    header with it (Lee, 4.3.3 review, F-14). An issuer endpoint has no
+    reason to redirect a POST, so a redirect is an error that names where it
+    pointed, and the person decides whether to use that URL directly.
+    """
+    import urllib.error
+    import urllib.request
+
+    def refuse(url, code, newurl):
+        return SettleError(
+            f"{url} answered {code} with a redirect to {newurl!r}; refusing "
+            "to follow it, because the request carries a token or a signature and "
+            "the new host was never checked. If that is the right address, use it "
+            "directly."
+        )
+
+    class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise refuse(req.full_url, code, newurl)
+
+    try:
+        return urllib.request.build_opener(_RefuseRedirect).open(request, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        # A 3xx the handler does not know (308 before Python 3.11) arrives here
+        # unfollowed; it is still a redirect, and still refused by name.
+        if 300 <= exc.code < 400:
+            raise refuse(request.full_url, exc.code, exc.headers.get("Location", "")) from exc
+        raise
+
+
 class SettleRejected(SettleError):
     """
     The issuer refused the transition, and said what it would have accepted.
@@ -207,7 +243,7 @@ def settle(
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with open_without_redirects(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")

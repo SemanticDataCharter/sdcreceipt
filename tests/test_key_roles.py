@@ -163,7 +163,7 @@ class TestLowFindings:
         deep = tmp_path / "deep.json"
         deep.write_text("[" * 200000 + "]" * 200000)
         with pytest.raises(SystemExit, match="nested too deeply"):
-            cli.main(["verify", str(deep)])
+            cli.main(["verify", str(deep), "--issuer-keys", str(deep)])
 
     def test_f06_duplicate_object_keys_are_refused(self, kit):
         receipt, _, _, paths, tmp = kit
