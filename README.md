@@ -103,6 +103,8 @@ grows another one.
 The signing key is given at start-up, never in a tool call, so it does not
 travel through the conversation.
 
+Also listed on [mcprush](https://mcprush.com/semanticdatacharter/sdcreceipt-mcp).
+
 ---
 
 ## If you were sent a Receipt
