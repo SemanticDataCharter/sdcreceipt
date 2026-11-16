@@ -6,6 +6,12 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-11-16
+
+`verify` follows the chain and checks key validity windows: two of the limits it printed under "Not covered by this
+result" (Timothy Lee's 4.3.x review, F-03 and F-11 to F-13). Check names follow the VSL conformance kit 1.2. No
+Receipt format change.
+
 ### Added
 - **`verify --chain DIR` follows `previous_hash` (#26).** Give the folder of earlier Receipts you hold (or one file)
   and every Receipt back to the head runs the full procedure. Held Receipts are found by recomputed hash, never the
