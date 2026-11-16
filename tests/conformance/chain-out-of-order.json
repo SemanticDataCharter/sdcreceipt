@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "canonicalization": "rfc8785",
+  "receipt_id": "c3tp7m2p9x4qw8vzn3hjt6bd",
+  "timestamp": "2026-08-30T09:00:00Z",
+  "payload_hash": "125a338bf47fed1214fd8882bec73d5ef063d6e0d385c7dd1695063e0b105cd8",
+  "payload_media_type": "application/xml",
+  "schema_ct_id": "jsi5yxnvzsmsisgn2bvelkni",
+  "schema_url": "https://sdcstudio.com/catalog/jsi5yxnvzsmsisgn2bvelkni/published.xsd",
+  "schema_hash": "d842a40bcc01ca25f96365f31c5385cd99397fb0d9938e7f81bb8d7959653e7e",
+  "rm_version": "SDC4",
+  "validation": {
+    "valid": true,
+    "structural_errors": 0,
+    "semantic_errors": 1,
+    "recovered": true,
+    "ev_injections": [
+      {
+        "xpath": "/ShippingManifest/Consignment/GrossWeight",
+        "ev_type": "NI",
+        "reason": "element absent in source; ISO 21090 no-information"
+      }
+    ],
+    "validator_version": "sdcvalidator 4.5.0"
+  },
+  "provenance_hash": "db57d562708ea0f03210d0098a5e56e5650a75c878bf6d71c3ba429a96447bb7",
+  "governance": {
+    "decision": "PERMIT",
+    "dimensions_checked": [
+      "workflow",
+      "attestation",
+      "party_role"
+    ],
+    "receipt_hash": "bcb82d7c76ad34e3ddd8beb33771947ba83335f9703e7c95877a3d7d57c5b828",
+    "receipt_url": null
+  },
+  "settlement": {
+    "condition_hash": "508ebba79151dc8a081bc920ab224cb08f5a160affc8c5e4b6b1facd9811c983",
+    "parties": [
+      "https://vendor.example/.well-known/vsl-key.json",
+      "did:web:partner.example"
+    ],
+    "triggers": [
+      {
+        "key_id": "https://vendor.example/.well-known/vsl-key.json",
+        "signature": "QViNNT-MLZgU6W2motcJFzcBi4x5uEnZ9YwPcu8DHeSgQWDTo9UIBK5RoXFKZM81lfwgyHHhkvP9k4A9tv5X4g",
+        "timestamp": "2026-08-30T15:03:12Z"
+      },
+      {
+        "key_id": "did:web:partner.example",
+        "signature": "HYDbyRmBJj7sJCHk4mBjsLaCgXu89l3nLOCwK8dPYO43YDyGYVqhmRmzxqZZ1AlJThSjJEjtjwIOxKiptM62eg",
+        "timestamp": "2026-08-30T16:41:55Z"
+      }
+    ]
+  },
+  "previous_hash": "5c7696752a556809bd4998625e9ac5b3883c023c8f9d734890824597ea8aeaa0",
+  "receipt_hash": "59095c5d61e4a7ebae0a01bd518ef149c5c23352c3939b6e644ef7d2685ac026",
+  "signatures": [
+    {
+      "key_id": "sdcstudio-signing-key-v1",
+      "alg": "ES256",
+      "sig": "YzzgaNDd0lMI7aUnBS9SXK8i_X_Jp8jF6GC8neB9Baz-3QZMYBQOnQuTxqzMrr3nb5euUqrb0kx056dlneih_Q"
+    }
+  ]
+}

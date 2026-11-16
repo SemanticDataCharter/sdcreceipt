@@ -182,5 +182,6 @@ class TestWhatVerifiedDoesNotCover:
                            "--party-keys", str(paths["party"])], capsys)
         assert rc == 0
         assert "trigger timestamps are not signed" in out
-        assert "key validity windows" in out
+        assert "party key's not_before is not judged" in out
+        assert "key validity windows" not in out  # compared since 4.4.0
         assert "payload_hash was not checked" in out

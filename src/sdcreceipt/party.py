@@ -22,7 +22,7 @@ from typing import Any
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, utils
 
-from sdcreceipt.verify import trigger_message
+from sdcreceipt.verify import parse_instant, trigger_message
 
 #: Owner read/write only. A private key readable by other accounts on a shared
 #: machine is a private key you no longer control.
@@ -130,12 +130,22 @@ def load_private_key(path: Path) -> ec.EllipticCurvePrivateKey:
     return key
 
 
-def key_document(key, key_id: str) -> dict[str, Any]:
+def key_document(key, key_id: str, *, not_before: str | None = None) -> dict[str, Any]:
     """
     The document a party publishes at their ``key_id``.
 
-    Shaped like the issuer's published key set so one verifier reads both.
+    Shaped like the issuer's published key set so one verifier reads both,
+    window included: ``not_before`` is when the key was made (now, unless
+    given) and ``not_after`` is null while the key is in use. A verifier fails
+    a trigger whose key's ``not_after`` is at or before the Receipt's
+    ``timestamp``, so setting it when the key is retired keeps every earlier
+    trigger verifying and stops the key from authorizing anything newer.
     """
+    if not_before is None:
+        from datetime import datetime, timezone
+
+        not_before = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    parse_instant(not_before)  # the Z form a verifier requires, or ValueError
     return {
         "issuer": key_id,
         "keys": [
@@ -145,6 +155,8 @@ def key_document(key, key_id: str) -> dict[str, Any]:
                 "alg": "ES256",
                 "public_key_pem": public_key_pem(key),
                 "status": "active",
+                "not_before": not_before,
+                "not_after": None,
             }
         ],
     }
@@ -236,13 +248,22 @@ class KeySet(dict):
     def __init__(self) -> None:
         super().__init__()
         self.status: dict[str, str] = {}
+        #: ``{key_id: {"not_before": str | None, "not_after": str | None}}``
+        #: for every key whose document states either bound. Kept as the
+        #: document wrote them; each was checked to be the ``Z`` form on load.
+        self.windows: dict[str, dict[str, str | None]] = {}
 
     def revoked(self, key_id: str) -> bool:
         return self.status.get(key_id, "active") == "revoked"
 
+    def window(self, key_id: str) -> dict[str, str | None] | None:
+        """The validity window the key document published for this key, or None if it stated none."""
+        return self.windows.get(key_id)
+
     def merge(self, other: "KeySet") -> "KeySet":
         self.update(other)
         self.status.update(other.status)
+        self.windows.update(getattr(other, "windows", {}))
         return self
 
     def add_document(self, other: "KeySet", source: str) -> "KeySet":
@@ -300,6 +321,26 @@ def _public_key(pem: Any, key_id: str):
     )
 
 
+def _window(entry: dict[str, Any], key_id: str) -> dict[str, str | None] | None:
+    """
+    The ``not_before`` / ``not_after`` a key entry states, or None if neither.
+
+    ★ A bound that is present and not the RFC 3339 UTC ``Z`` form the
+    Receipt's own ``timestamp`` uses refuses the document, as a key listed
+    twice does: two verifiers must not read one window two ways. A revoked
+    key's window is not read, because a revoked key fails whatever its
+    window says (the conformance kit's assembly drops it altogether).
+    """
+    window = {bound: entry.get(bound) for bound in ("not_before", "not_after")}
+    for bound, value in window.items():
+        if value is not None:
+            try:
+                parse_instant(value)
+            except ValueError as exc:
+                raise PartyError(f"Key {key_id!r} {bound}: {exc}.") from None
+    return window if any(v is not None for v in window.values()) else None
+
+
 def load_key_set(document: Any) -> KeySet:
     """
     Turn a published key document into a :class:`KeySet`.
@@ -309,6 +350,7 @@ def load_key_set(document: Any) -> KeySet:
     is checked to be ECDSA P-256; a key marked ``revoked`` is kept, and
     recorded as revoked, so a signature made with it fails for that reason
     rather than as "no key held".
+    Each key's ``not_before`` / ``not_after`` is kept as its window.
     """
     if not isinstance(document, dict):
         raise PartyError(
@@ -333,6 +375,10 @@ def load_key_set(document: Any) -> KeySet:
             status = entry.get("status")
             if isinstance(status, str):
                 keys.status[key_id] = status
+            if status != "revoked":
+                window = _window(entry, key_id)
+                if window:
+                    keys.windows[key_id] = window
 
     methods = document.get("verificationMethod", [])
     if not isinstance(methods, list):

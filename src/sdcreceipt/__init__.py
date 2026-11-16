@@ -19,6 +19,6 @@ that cannot be done alone.
 #: fixes. An SDC5 reference model would make this 5.x.x.
 __version__ = "4.3.4"
 
-from sdcreceipt.verify import Result, verify  # noqa: F401
+from sdcreceipt.verify import Result, verify, verify_chain  # noqa: F401
 
-__all__ = ["verify", "Result", "__version__"]
+__all__ = ["verify", "verify_chain", "Result", "__version__"]

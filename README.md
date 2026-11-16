@@ -85,6 +85,10 @@ Exposes `verify_receipt`, `sign_trigger` and `settle`. Each is advertised only
 when the server has what it needs, so a tool is never offered whose every call
 would fail.
 
+`verify_receipt` runs the same procedure as the command line, key windows included. `party_keys` takes one key
+document or an array of them, one per party, and `chain` takes the earlier Receipts you hold, as `--chain` does.
+The result names what did not run: `trigger_signatures_checked` and `chain_checked`.
+
 Two deliberate omissions, and they are the security posture rather than an
 oversight (see also [SECURITY.md](SECURITY.md)):
 
@@ -129,9 +133,30 @@ The roles come from your command line, never from the Receipt, and a key_id that
 Since 4.3.3 the old `--keys` flag is refused: it pooled every document, which let a party's own document supply
 an issuer key (GHSA-gwhr-82j5-883w).
 
-After the checks, `verify` lists what VERIFIED does not cover: trigger timestamps are not signed, key validity
-windows are not compared with the Receipt's time, a chain link (`previous_hash`) is not followed, and the payload
-and governance Receipt are checked only if you pass them.
+**Key windows.** The issuer's key document publishes `not_before` and `not_after` for every key it has used. Each
+issuer signature must fall inside its key's window, `not_before <= timestamp < not_after`, compared with the
+Receipt's own signed `timestamp`. A `retired` key inside its window still verifies, so a rotation never breaks the
+Receipts a key signed; a `revoked` key fails whatever its window says. A party key whose `not_after` is at or
+before the Receipt's `timestamp` fails its trigger. A window bound not written as RFC 3339 UTC ending in `Z` refuses
+the document. Since 4.4.0, always on.
+
+**Chains.** A Receipt's `previous_hash` names the Receipt before it. Give the folder of earlier Receipts you hold
+with `--chain`, and `verify` follows `previous_hash` back to the head and runs every check on every Receipt on the
+way:
+
+```bash
+sdcreceipt verify receipt.json --issuer-keys sdcstudio-signing-keys.json \
+    --party-keys vendor-keys.json --party-keys partner-keys.json --chain receipts/
+```
+
+Earlier Receipts are found by the hash `verify` computes, never the one a file records, and are never fetched.
+Checks on earlier Receipts are prefixed `chain.link[<n> <first 8 of previous_hash>…]`, and the walk ends with
+`chain.head`. A missing link, two different files with one hash, or an earlier Receipt that was never fully
+triggered means NOT VERIFIED (exit 1). The names follow the VSL conformance kit 1.2.
+
+After the checks, `verify` lists what VERIFIED does not cover: trigger timestamps are not signed (so a party key's
+`not_before` is not judged), the chain is not followed without `--chain`, and the payload and governance Receipt
+are checked only if you pass them, for the Receipt named.
 
 Every check is reported, not just the first failure:
 
@@ -188,6 +213,15 @@ That writes a private key (mode `0600`) and a key document, and tells you the
 exact URL the document must be reachable at. Publishing one JSON file is the
 whole onboarding requirement.
 
+The key document states the key's window: `not_before` is when `init` made it, and `not_after` is null while you
+use it. A verifier fails any trigger whose key's `not_after` is at or before the Receipt's `timestamp`.
+
+**Changing keys.** Run `init` again with a new `key_id` (a new URL, for example `.../vsl-key-2.json`) and give the
+new `key_id` for new settlements. In the old document, set the old key's `status` to `retired` and `not_after` to
+the moment you stopped using it, and **keep it published**: Receipts you triggered before then still verify against
+it, and nothing newer can. Never remove a key that has triggered a settlement. If the private key leaked, set
+`status` to `revoked` instead: every trigger it made then fails, whatever its window says.
+
 Then, when you are sent a Receipt to authorize:
 
 ```bash
@@ -241,13 +275,15 @@ and the Receipt does not verify. Before 4.2.1 it passed on a comparison of
 `tests/conformance/` ships the issuer's published vectors, and the suite runs
 this implementation against them.
 
-Sixteen vectors, eleven at Receipt 1.0 and five at 1.1 (each checked against
-the schema its own `version` names). **Every invalid one encodes a defect that was actually made**,
+Kit 1.2: twenty-seven vectors and five key-document cases. Seventeen check one Receipt, at 1.0 or 1.1 (each
+against the schema its own `version` names); six check chains, with the held earlier Receipts the vector lists;
+four check key windows, with published key documents. The chain and window vectors also run through the command
+line and the MCP tool. **Every invalid one encodes a defect that was actually made**,
 not a hypothetical: a DER signature where ES256 requires P1363, a signature
 over the hex text of `receipt_hash` rather than its raw bytes, a governance
 binding that does not match the evidence held, a trigger replayed from another
 Receipt sharing the same release condition, and so on. Failing one for the
-wrong reason does not count — the manifest names the check that must break.
+wrong reason does not count: the manifest names the check that must break.
 
 ```bash
 pytest
