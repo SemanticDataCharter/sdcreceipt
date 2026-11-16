@@ -85,6 +85,10 @@ Exposes `verify_receipt`, `sign_trigger` and `settle`. Each is advertised only
 when the server has what it needs, so a tool is never offered whose every call
 would fail.
 
+`verify_receipt` runs the same procedure as the command line, key windows included. `party_keys` takes one key
+document or an array of them, one per party, and `chain` takes the earlier Receipts you hold, as `--chain` does.
+The result names what did not run: `trigger_signatures_checked` and `chain_checked`.
+
 Two deliberate omissions, and they are the security posture rather than an
 oversight (see also [SECURITY.md](SECURITY.md)):
 
@@ -262,13 +266,15 @@ and the Receipt does not verify. Before 4.2.1 it passed on a comparison of
 `tests/conformance/` ships the issuer's published vectors, and the suite runs
 this implementation against them.
 
-Sixteen vectors, eleven at Receipt 1.0 and five at 1.1 (each checked against
-the schema its own `version` names). **Every invalid one encodes a defect that was actually made**,
+Kit 1.2: twenty-seven vectors and five key-document cases. Seventeen check one Receipt, at 1.0 or 1.1 (each
+against the schema its own `version` names); six check chains, with the held earlier Receipts the vector lists;
+four check key windows, with published key documents. The chain and window vectors also run through the command
+line and the MCP tool. **Every invalid one encodes a defect that was actually made**,
 not a hypothetical: a DER signature where ES256 requires P1363, a signature
 over the hex text of `receipt_hash` rather than its raw bytes, a governance
 binding that does not match the evidence held, a trigger replayed from another
 Receipt sharing the same release condition, and so on. Failing one for the
-wrong reason does not count — the manifest names the check that must break.
+wrong reason does not count: the manifest names the check that must break.
 
 ```bash
 pytest

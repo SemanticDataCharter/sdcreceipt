@@ -59,9 +59,9 @@ from pathlib import Path
 from typing import Any
 
 from sdcreceipt import __version__
-from sdcreceipt.party import PartyError, load_key_set, load_private_key, sign_trigger
+from sdcreceipt.party import KeySet, PartyError, load_key_set, load_private_key, sign_trigger
 from sdcreceipt.issue import SettleError, SettleRejected, settle as _settle, split_response
-from sdcreceipt.verify import verify
+from sdcreceipt.verify import CHAIN_CEILING, verify, verify_chain
 
 JSONRPC_VERSION = "2.0"
 
@@ -107,9 +107,12 @@ TOOLS = [
                     ),
                 },
                 "party_keys": {
-                    "type": "object",
+                    "type": ["object", "array"],
+                    "items": {"type": "object"},
                     "description": (
-                        "Optional. Party key document, to verify triggers. "
+                        "Optional. A party key document, or an array of them (one per "
+                        "party; links in one chain can have different parties), to "
+                        "verify triggers. A key_id two documents claim is refused. "
                         "Omitting it skips the trigger check, which is honest "
                         "when the keys are not held; the result says so."
                     ),
@@ -117,6 +120,17 @@ TOOLS = [
                 "governance_receipt": {
                     "type": "object",
                     "description": "Optional. The governance Receipt, if held.",
+                },
+                "chain": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "maxItems": CHAIN_CEILING,
+                    "description": (
+                        "Optional. Earlier Receipts you hold. When given, previous_hash "
+                        "is followed back to the head and every Receipt on the way runs "
+                        "the full procedure; an empty array is still a chain, with "
+                        "nothing held. Never fetched: only what you pass is used."
+                    ),
                 },
             },
             "required": ["receipt", "issuer_keys"],
@@ -225,16 +239,24 @@ def _handle_verify_receipt(args: dict[str, Any]) -> Any:
     receipt, _meta = split_response(_require_object(args, "receipt"))   # a bare Receipt or the issuer's envelope around one
     issuer_keys = load_key_set(_require_object(args, "issuer_keys"))
 
-    party_keys = None
-    if args.get("party_keys"):
-        party_keys = load_key_set(_require_object(args, "party_keys"))
+    party_keys = _party_keys(args.get("party_keys"))
+    both = sorted(set(issuer_keys) & set(party_keys or {}))
+    if both:
+        raise PartyError(
+            f"key_id {both[0]!r} appears in both the issuer and a party document. "
+            "One key has one role; refusing to guess which."
+        )
 
-    result = verify(
-        receipt,
+    evidence = dict(
         issuer_keys=issuer_keys,
         party_keys=party_keys,
         governance_receipt=_require_object(args, "governance_receipt", optional=True),
     )
+    chain = _chain(args)
+    if chain is None:
+        result = verify(receipt, **evidence)
+    else:
+        result = verify_chain(receipt, held=chain, **evidence)
 
     return {
         "verified": result.ok,
@@ -245,7 +267,46 @@ def _handle_verify_receipt(args: dict[str, Any]) -> Any:
         "failures": [c.name for c in result.failures],
         # Named so a reader cannot mistake an unrun check for a passed one.
         "trigger_signatures_checked": party_keys is not None,
+        "chain_checked": chain is not None,
     }
+
+
+def _party_keys(value: Any) -> KeySet | None:
+    """
+    One party key document or an array of them, assembled as the CLI does.
+
+    ★ ``add_document``, never a last-wins merge: a later document must not
+    replace a key, or clear a revocation, that an earlier one published
+    (Lee, 4.3.x review, F-02).
+    """
+    if not value:
+        return None
+    documents = value if isinstance(value, list) else [value]
+    keys = KeySet()
+    for i, document in enumerate(documents):
+        if not isinstance(document, dict):
+            raise PartyError("`party_keys` must be a JSON object or an array of objects.")
+        keys.add_document(load_key_set(document), f"party document {i}")
+    return keys
+
+
+def _chain(args: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """
+    The held earlier Receipts, or None when no chain was asked for.
+
+    An empty array is a chain with nothing held, not an absent one, and it
+    fails if the Receipt names an earlier Receipt: asked for and not
+    established. Each entry may be a bare Receipt or the issuer's response
+    around one, as ``receipt`` may.
+    """
+    if "chain" not in args or args["chain"] is None:
+        return None
+    chain = args["chain"]
+    if not isinstance(chain, list) or not all(isinstance(r, dict) for r in chain):
+        raise PartyError("`chain` must be an array of Receipt objects.")
+    if len(chain) > CHAIN_CEILING:
+        raise PartyError(f"`chain` holds {len(chain)} Receipts; at most {CHAIN_CEILING} are read.")
+    return [split_response(r)[0] for r in chain]
 
 
 def _handle_sign_trigger(args: dict[str, Any]) -> Any:

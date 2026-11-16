@@ -21,11 +21,19 @@ reference model (see README, Versioning).
   These were two of the limits `verify` printed under "Not covered by this result" (Lee, 4.3.x review, F-03 and F-11
   to F-13); the NOTE lines now say only what remains.
 
+- **MCP `verify_receipt` has the chain and per-party key documents (#28).** `chain` takes the earlier Receipts held
+  (an empty array is still a chain), `party_keys` takes one document or an array, assembled with `add_document`, and
+  the result adds `chain_checked`. The tool calls `verify_chain()`, so it and the CLI cannot disagree.
+
 ### Changed
+- MCP `verify_receipt` refuses a key_id given in both the issuer and a party document, as the CLI has since 4.3.3.
 - A Receipt signed by a key outside the window its issuer published, which verified before, now fails. That is the
   window the issuer itself states; nothing about the Receipt format changes.
 
 ### Tests
+- **Conformance kit 1.2 (#30)**, from SDCStudio: 27 vectors and 5 key-document cases. Six new vectors hold chains
+  (`chain`, files under `chain/`) and four check key windows against published key documents (`key_documents`).
+  Every vector runs through the library; the ten new ones also run through the command line and the MCP tool.
 - The conformance kit is now 1.1, from SDCStudio: 17 vectors, including `issuer-signature-by-a-party-key` (F-01), and 5
   key-document cases (F-01, F-02), run here through the real command line. The new vector verifies on 4.3.2 with the old
   pooled `--keys` and fails on 4.3.3 and later. From Timothy Lee's review of 4.3.3, finding F-16.

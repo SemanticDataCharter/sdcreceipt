@@ -1,0 +1,13 @@
+{
+  "issuer": "https://vendor.example/.well-known/vsl-key.json",
+  "keys": [
+    {
+      "key_id": "https://vendor.example/.well-known/vsl-key.json",
+      "alg": "ES256",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWQs0jtipvHWtDZ9QDL0goY3tg2mb\n2/jWBZUZwhcbguknaNFcxA5XgCkxp0Ohhn4S0yCL7wcK4tHx6Ued6wMYOg==\n-----END PUBLIC KEY-----\n",
+      "status": "retired",
+      "not_before": "2026-01-01T00:00:00Z",
+      "not_after": "2026-08-01T00:00:00Z"
+    }
+  ]
+}

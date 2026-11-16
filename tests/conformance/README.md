@@ -1,4 +1,4 @@
-# VSL conformance kit (1.1)
+# VSL conformance kit (1.2)
 
 *The issuer builds this kit and copies it here, unchanged, so anyone can check a verifier against it without an
 account. `sdcreceipt`'s own suite runs every vector and every key-document case (`tests/test_conformance.py`).*
@@ -21,14 +21,24 @@ because it manufactures confidence. Run the vectors first.
 for each vector in manifest.json:
     evidence = keys.json + governance-receipt.json + payload.xml
     schema   = the schema the vector's own `version` names (1.0 or 1.1)
+    if vector.key_documents:            # kit 1.2, see below
+        replace keys.json with the keys and windows those documents give
     for each name in vector.withhold:   # usually absent
         drop that piece of evidence
 
-    result = your_verifier(<file>, evidence)
+    if vector.chain is present:         # kit 1.2, see below; [] still counts
+        result = your_chain_verifier(<file>, held = vector.chain, evidence)
+    else:
+        result = your_verifier(<file>, evidence)
 
     if vector.expect == "valid":    result must PASS
     if vector.expect == "invalid":  result must FAIL, on vector.breaks
 ```
+
+**A runner that does not implement `chain` or `key_documents` must report
+those vectors as not run, never as passed.** Run without its chain, a chain
+vector's Receipt verifies on its own; run with `keys.json`, a key-window
+vector's does too. Either way the check the vector exists for never ran.
 
 **`withhold` matters.** A vector that names it must be run *without* the
 evidence it lists. The runner used to supply every key to every vector, so the
@@ -40,7 +50,7 @@ below).
 the difference between "my code rejected it" and "my code rejected it for the
 reason that matters," and only the second means the bug is caught.
 
-You are conformant when all 17 vectors and all 5 key-document cases (below) behave as documented. Our own kit build refuses
+You are conformant when all 27 vectors and all 5 key-document cases (below) behave as documented. Our own kit build refuses
 to write a vector that does not, so the file you have has been held to the
 same standard.
 
@@ -68,6 +78,16 @@ demonstration.
 | `mldsa-signature-wrong-length-1.1` | invalid | A 64-byte `ML-DSA-65` signature. The `alg` fixes the length (3309 bytes); the schema catches it first, the decode must catch it without. |
 | `mldsa-signature-unknown-key-1.1` | invalid | The `ML-DSA-65` signature names a `key_id` the key document does not hold. A signature that cannot be checked is a failure, not a skip. |
 | `issuer-signature-by-a-party-key` | invalid | ★ The issuer signature is genuine, made with a second key the vendor publishes in **its own** key document, and the content is untouched. The only reason to refuse is the role: a key you hold as a party's is never an issuer key, whatever the Receipt's `signatures` name. Run with every key in `keys.json`, the vendor's second key included, and you must still fail at that signature. This was the `sdcreceipt` command-line defect GHSA-gwhr-82j5-883w (found by Timothy Lee, October 2026). |
+| `valid-chain-of-three` | valid, **`chain`** | Head, middle and tip of one sequence, each signed and settled, verified from the tip with the other two held. Every link runs the full procedure. |
+| `chain-broken-link` | invalid, **`chain`** | The tip's `previous_hash` names a Receipt other than the one held. |
+| `chain-earlier-link-tampered` | invalid, **`chain`** | ★ The middle Receipt was edited after signing; the tip alone verifies. Index held Receipts by their *recorded* `receipt_hash` and you accept the chain. |
+| `chain-link-not-held` | invalid, **`chain: []`** | A chain is asked for and the earlier Receipt is not held. That is a failure, not a pass on the tip alone. |
+| `chain-out-of-order` | invalid, **`chain`** | The earlier link's signed `timestamp` is after the tip's. Every hash joins; only the order is wrong. |
+| `chain-two-documents-one-hash` | invalid, **`chain`** | Two documents hash to the value the tip names: the same Receipt with its triggers in another order and time, which the hash excludes. Refuse rather than pick. |
+| `issuer-key-expired-before-timestamp` | invalid, **`key_documents`** | The issuer's key is retired, its `not_after` before the Receipt's `timestamp`. The signature is genuine and outside the window the issuer published. |
+| `issuer-key-not-yet-valid` | invalid, **`key_documents`** | The Receipt's `timestamp` is before the issuer key's `not_before`. |
+| `retired-key-inside-window` | **valid**, **`key_documents`** | ★ The issuer's key is retired and the `timestamp` is inside its window. Rotation must not break the Receipts a key signed: `retired` is not a reason to refuse, `revoked` is. |
+| `party-key-retired-before-receipt` | invalid, **`key_documents`** | The vendor's key `not_after` is before the Receipt's `timestamp`. A trigger signs `receipt_id`, which did not exist before that time. |
 | `triggers-forged-no-party-keys` | invalid, **`withhold: party_keys`** | ★ Every trigger signature is well formed and wrong, and you are run **without party keys**. Party and trigger `key_id` sets still match, so a verifier that decides completeness by comparing strings says VERIFIED over fabricated authorization. `settlement.complete` must be recorded as unestablished. This shipped in `sdcreceipt` 4.2.0 and in our own reference verifier. |
 
 ### Key-document cases: assembling the keys before reading a Receipt
@@ -96,6 +116,59 @@ Roles come from **you**, never from a Receipt. The rules the cases hold you to:
 These come from Timothy Lee's release assurance review of `sdcreceipt` 4.3.x (findings F-01 and F-02), where the
 verifier's command line pooled every document it was given. `sdcreceipt` 4.3.3 and later pass them.
 
+### Chains: a vector's `chain` (kit 1.2)
+
+`chain` lists held earlier Receipts, files under `chain/`. Verify the vector's Receipt **and every
+earlier Receipt its `previous_hash` reaches**, using only what is held. An empty list is a chain with nothing
+held, not an absent chain: `chain-link-not-held` must fail.
+
+The rules, each of which a vector holds you to:
+
+1. **Index held Receipts by recomputed hash, never the recorded one.** Otherwise a document claims a place in
+   the chain by writing a `receipt_hash` it does not have (`chain-earlier-link-tampered`). Byte-identical
+   copies are one document; two *different* documents with one hash (they can differ only in `signatures` or
+   `settlement.triggers`) mean the chain cannot say which is the Receipt, and it fails
+   (`chain-two-documents-one-hash`).
+2. **Walk back until `previous_hash` is null**, the head. Give up after 10,000 links.
+3. **Run the full procedure on every earlier link** with the same keys, windows and schema. Governance and
+   payload evidence apply to the Receipt named, not to earlier links. An earlier link that was never fully
+   triggered fails the chain: VERIFIED over a chain means every settlement in it completed.
+4. **Check each join twice**: `previous_hash` names a held Receipt, and the earlier signed `timestamp` is not
+   after the later one (`chain-out-of-order`).
+
+Checks from earlier links are named with a prefix for the link and the hash it was named by, then the check:
+`chain.link[1 3fa9c1d2…] receipt_hash` for the Receipt one back, `chain.link[2 …]` for the one before it, and
+`chain.head` when the head is reached. The prefix is `chain.link[`, the link number, a space, the first 8
+characters of the `previous_hash` that named it, `…` (U+2026) and `]`. A join's checks are
+`<prefix> previous_hash` and `<prefix> timestamp`. A chain that cannot be established fails on the bare
+prefix: the named Receipt is not held, two documents share its hash, or the ceiling is reached. When the named
+Receipt is not held but other held Receipts are left over, the join fails on `<prefix> previous_hash`
+instead (`chain-broken-link`): you were given an earlier Receipt and this one names a different one. When a
+left-over Receipt *records* the named hash without hashing to it, examine it anyway, so the failure says which
+link was edited; it fails on its own `receipt_hash` and on the join.
+
+### Key windows: a vector's `key_documents` (kit 1.2)
+
+`keys.json` is a flat map of keys with no status or window, so it cannot express these vectors. A vector with
+`key_documents` names published-shape documents in `key-documents/`:
+`{"issuer": file, "party": [files]}`. Assemble keys from them as for the key-document cases above, keeping each
+key's `not_before` and `not_after`, and use them instead of `keys.json`.
+
+- **Issuer signatures:** `not_before <= timestamp < not_after`, comparing the Receipt's own signed
+  `timestamp`. Half-open, because a retired key's `not_after` is its successor's `not_before`. A null bound is
+  no bound; a key with no window stated has nothing to check. A signature made outside its key's window fails
+  on that signature, `signature[<key_id>]`.
+- **`retired` inside its window passes; `revoked` fails whatever its window says.** A compromised key can write
+  any timestamp, so a revoked key is never held.
+- **Party triggers:** a trigger's own timestamp is not signed, but a trigger signs `receipt_id`, which did not
+  exist before the Receipt's `timestamp`. A party key whose `not_after <= timestamp` fails the trigger,
+  `trigger[<key_id>]`. `not_before` is not judged.
+- **Bounds are RFC 3339 UTC ending in `Z`**, the form the Receipt's `timestamp` uses. A bound in any other form
+  refuses the document, as a key listed twice does.
+
+Neither addition changes the Receipt format: `previous_hash` and `timestamp` are inside `receipt_hash` in 1.0
+and 1.1.
+
 ### The two that catch the most implementations
 
 **Canonicalization.** RFC 8785 requires ECMAScript `Number::toString`. Python's
@@ -104,7 +177,7 @@ requires `10000000000000000`, and `1e-07` where it requires `1e-7`. A single
 float anywhere is enough to compute a different `receipt_hash`, and the
 failure looks exactly like tampering. Conformance vectors for canonicalization
 alone are published separately in
-[`sdcgovernance/test-vectors/`](https://github.com/SemanticDataCharter/sdcgovernance).
+[`sdcgovernance/test-`](https://github.com/SemanticDataCharter/sdcgovernance).
 
 **Trigger replay.** A trigger signs `{condition_hash, receipt_id}`, never the
 condition alone. Repeat trading relationships reuse the same release
@@ -130,7 +203,8 @@ operator believes the check ran.
 | `settlement-receipt-1.1.schema.json` | The 1.1 revision: the same content with two required signatures, `ES256` and `ML-DSA-65`. Normative for a Receipt that says `1.1`. |
 | `manifest.json` | Every vector, its expectation, and why it exists. |
 | `keys.json` | Public keys for the vectors. Vectors only, used nowhere else. `party_keys` includes the vendor's second key (`#k2`). |
-| `key-documents/` | Published-shape key documents for the key-document cases. |
+| `key-documents/` | Published-shape key documents for the key-document cases and the key-window vectors (status, `not_before`, `not_after`). |
+| `chain/` | Held earlier Receipts for the chain vectors. |
 | `governance-receipt.json` | The governance Receipt the vectors bind to. |
 | `payload.xml` | The payload the vectors commit to, for the optional payload check. |
 
@@ -160,7 +234,11 @@ In order:
    equals `governance.receipt_hash` and its decision matches.
 6. **If the payload is held**, recompute `payload_hash` and re-run the
    recorded validator version.
-7. **If a chain is held**, verify `previous_hash` linkage across the sequence.
+7. **If a chain is held**, follow `previous_hash` back to the head, running the full procedure on every
+   link, as set out under *Chains* above.
+
+Throughout, a key's published window counts: an issuer signature, or a trigger, made with a key outside its
+window fails, as set out under *Key windows* above.
 
 Steps 5 to 7 are conditional by design. Holding only the Receipt, steps 2 to 4
 still establish that a conformant, authorized, dual-triggered exchange

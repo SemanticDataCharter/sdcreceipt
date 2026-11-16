@@ -21,7 +21,8 @@ import pathlib
 import pytest
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
-from sdcreceipt.verify import verify
+from sdcreceipt.party import KeySet, load_key_set_file
+from sdcreceipt.verify import verify, verify_chain
 
 KIT = pathlib.Path(__file__).parent / "conformance"
 
@@ -48,30 +49,60 @@ def kit():
     }
 
 
-def run(kit, filename, withhold=()):
+def _documents(spec):
+    """
+    Keys assembled from the published-shape documents a vector's
+    ``key_documents`` names (kit 1.2): ``keys.json`` is a flat map with no
+    status or window, so it cannot express the key-window vectors.
+    """
+    issuer, party = KeySet(), KeySet()
+    issuer.add_document(load_key_set_file(KIT / "key-documents" / spec["issuer"]), spec["issuer"])
+    for name in spec.get("party", []):
+        party.add_document(load_key_set_file(KIT / "key-documents" / name), name)
+    return issuer, party
+
+
+def run(kit, filename, withhold=(), *, key_documents=None, chain=None):
     """
     ``withhold`` names arguments the caller deliberately does not supply.
 
     Every vector used to run with the full key set, which is why the 4.2.0
     trigger defect shipped: the one arrangement that broke it, a settled
     Receipt verified without party keys, could not be expressed here.
+
+    ``chain`` (kit 1.2) lists held earlier Receipts. An empty list is still a
+    chain, with nothing held, so it is told apart from an absent one.
     """
     receipt = json.loads((KIT / filename).read_text())
+    issuer_keys, party_keys = (
+        _documents(key_documents) if key_documents else (kit["issuer_keys"], kit["party_keys"])
+    )
     args = {
-        "issuer_keys": kit["issuer_keys"],
-        "party_keys": kit["party_keys"],
+        "issuer_keys": issuer_keys,
+        "party_keys": party_keys,
         "schema": kit["schemas"][receipt["version"]],
         "governance_receipt": kit["governance"],
         "payload": kit["payload"],
     }
     for name in withhold:
         args[name] = None
+    if chain is not None:
+        held = [json.loads((KIT / name).read_text()) for name in chain]
+        return verify_chain(receipt, held=held, **args)
     return verify(receipt, **args)
 
 
+def _run_vector(kit, entry):
+    return run(kit, entry["file"], entry.get("withhold", ()),
+               key_documents=entry.get("key_documents"), chain=entry.get("chain"))
+
+
 def test_the_kit_is_present(kit):
-    assert len(kit["manifest"]["vectors"]) == 17
+    assert kit["manifest"]["version"] == "1.2"
+    assert len(kit["manifest"]["vectors"]) == 27
     assert len(kit["manifest"]["key_documents"]) == 5
+    assert sum("chain" in v for v in kit["manifest"]["vectors"]) == 6
+    assert sum("key_documents" in v for v in kit["manifest"]["vectors"]) == 4
 
 
 @pytest.mark.parametrize("case", json.loads((KIT / "manifest.json").read_text())["key_documents"],
@@ -119,7 +150,7 @@ def test_every_vector_behaves_as_the_manifest_says(kit):
     problems = []
 
     for entry in kit["manifest"]["vectors"]:
-        result = run(kit, entry["file"], entry.get("withhold", ()))
+        result = _run_vector(kit, entry)
         failed = {c.name for c in result.failures}
 
         if entry["expect"] == "valid":
@@ -304,3 +335,49 @@ def test_an_es256_key_cannot_check_an_mldsa_signature(kit):
     failed = {c.name: c.detail for c in result.failures}
     assert list(failed) == ["signature[sdcstudio-pq-signing-key-v1]"]
     assert "not an ML-DSA-65 key" in failed["signature[sdcstudio-pq-signing-key-v1]"]
+
+
+# --- kit 1.2: chains and key windows, through the real command line ----------------
+
+_KIT_12 = [v for v in json.loads((KIT / "manifest.json").read_text())["vectors"]
+           if "chain" in v or "key_documents" in v]
+
+
+@pytest.mark.parametrize("entry", _KIT_12, ids=lambda v: v["name"])
+def test_every_chain_and_window_vector_through_the_command_line(entry, tmp_path, capsys):
+    """
+    The kit 1.2 vectors as an operator runs them: published key documents in
+    their roles, the held Receipts in a folder given to --chain. An invalid
+    vector must exit 1 and print FAIL on the check the manifest names.
+    """
+    from sdcreceipt import cli
+
+    spec = entry.get("key_documents")
+    if spec:
+        issuer_docs = [KIT / "key-documents" / spec["issuer"]]
+        party_docs = [KIT / "key-documents" / name for name in spec.get("party", [])]
+    else:
+        keys = json.loads((KIT / "keys.json").read_text())
+        issuer_docs, party_docs = [tmp_path / "issuer.json"], [tmp_path / "party.json"]
+        for path, group in ((issuer_docs[0], keys["issuer_keys"]), (party_docs[0], keys["party_keys"])):
+            path.write_text(json.dumps({"keys": [{"key_id": k, "public_key_pem": v, "status": "active"}
+                                                 for k, v in group.items()]}))
+
+    args = ["verify", str(KIT / entry["file"]),
+            "--governance", str(KIT / "governance-receipt.json"), "--payload", str(KIT / "payload.xml")]
+    args += [a for p in issuer_docs for a in ("--issuer-keys", str(p))]
+    args += [a for p in party_docs for a in ("--party-keys", str(p))]
+    if "chain" in entry:
+        held = tmp_path / "held"
+        held.mkdir()
+        for name in entry["chain"]:
+            (held / pathlib.Path(name).name).write_text((KIT / name).read_text())
+        args += ["--chain", str(held)]
+
+    rc = cli.main(args)
+    out = capsys.readouterr().out
+    failed = {line[6:].split(": ", 1)[0] for line in out.splitlines() if line.startswith("FAIL  ")}
+    if entry["expect"] == "valid":
+        assert rc == 0, out
+    else:
+        assert rc == 1 and entry["breaks"] in failed, out

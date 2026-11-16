@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "vectors": [
     {
       "name": "valid-settled",
@@ -119,6 +119,124 @@
       "expect": "invalid",
       "description": "The ML-DSA-65 signature names a key_id the key document does not hold. A signature that cannot be checked is a failure, not a skip: the ES256 signature verifying must not let the Receipt through.",
       "breaks": "signature[sdcstudio-pq-signing-key-v9]"
+    },
+    {
+      "name": "valid-chain-of-three",
+      "file": "valid-chain-of-three.json",
+      "expect": "valid",
+      "description": "Head, middle and tip of one sequence, each signed and settled, verified from the tip with the other two held. Every link runs the full procedure; the walk ends at the head.",
+      "chain": [
+        "chain/head.json",
+        "chain/middle.json"
+      ]
+    },
+    {
+      "name": "chain-broken-link",
+      "file": "chain-broken-link.json",
+      "expect": "invalid",
+      "description": "The tip's previous_hash names a Receipt other than the one held. The held middle is left over, so the join fails on previous_hash rather than on a missing link.",
+      "breaks": "chain.link[1 9ba93bea\u2026] previous_hash",
+      "chain": [
+        "chain/head.json",
+        "chain/middle.json"
+      ]
+    },
+    {
+      "name": "chain-earlier-link-tampered",
+      "file": "chain-earlier-link-tampered.json",
+      "expect": "invalid",
+      "description": "The middle Receipt was edited after signing. The tip alone verifies, and a verifier that indexes held Receipts by their recorded receipt_hash would accept the chain. Indexed by recomputed hash, nothing matches; the Receipt that claims the place is examined and fails its own receipt_hash.",
+      "breaks": "chain.link[1 17c7a623\u2026] receipt_hash",
+      "chain": [
+        "chain/head.json",
+        "chain/middle-tampered.json"
+      ]
+    },
+    {
+      "name": "chain-link-not-held",
+      "file": "chain-link-not-held.json",
+      "expect": "invalid",
+      "description": "A chain is asked for and the earlier Receipt is not held. The chain cannot be established, which is a failure, not a pass on the tip alone. The chain list is empty, not absent.",
+      "breaks": "chain.link[1 17c7a623\u2026]",
+      "chain": []
+    },
+    {
+      "name": "chain-out-of-order",
+      "file": "chain-out-of-order.json",
+      "expect": "invalid",
+      "description": "The earlier link's signed timestamp is after the tip's. Every link verifies and every hash joins; only the order is wrong.",
+      "breaks": "chain.link[1 5c769675\u2026] timestamp",
+      "chain": [
+        "chain/head.json",
+        "chain/middle-late.json"
+      ]
+    },
+    {
+      "name": "chain-two-documents-one-hash",
+      "file": "chain-two-documents-one-hash.json",
+      "expect": "invalid",
+      "description": "Two different documents hash to the value the tip names: the same middle with its triggers in another order and time, which the hash excludes. A chain cannot say which is the Receipt, so it refuses rather than picks.",
+      "breaks": "chain.link[1 17c7a623\u2026]",
+      "chain": [
+        "chain/head.json",
+        "chain/middle.json",
+        "chain/middle-other-triggers.json"
+      ]
+    },
+    {
+      "name": "issuer-key-expired-before-timestamp",
+      "file": "issuer-key-expired-before-timestamp.json",
+      "expect": "invalid",
+      "description": "The issuer's key is retired with not_after 2026-08-01T00:00:00Z, before the Receipt's timestamp. The signature is genuine; it was made outside the window the issuer itself published.",
+      "breaks": "signature[sdcstudio-signing-key-v1]",
+      "key_documents": {
+        "issuer": "issuer-key-expired.json",
+        "party": [
+          "vendor.json",
+          "partner.json"
+        ]
+      }
+    },
+    {
+      "name": "issuer-key-not-yet-valid",
+      "file": "issuer-key-not-yet-valid.json",
+      "expect": "invalid",
+      "description": "The Receipt's timestamp is before the issuer key's not_before 2026-09-01T00:00:00Z: the Receipt claims a time before the key existed.",
+      "breaks": "signature[sdcstudio-signing-key-v1]",
+      "key_documents": {
+        "issuer": "issuer-key-not-yet-valid.json",
+        "party": [
+          "vendor.json",
+          "partner.json"
+        ]
+      }
+    },
+    {
+      "name": "retired-key-inside-window",
+      "file": "retired-key-inside-window.json",
+      "expect": "valid",
+      "description": "The issuer's key is retired, and the Receipt's timestamp is inside its window. Rotation must not break the Receipts a key signed, so this verifies. Status alone is not a reason to refuse; revoked is.",
+      "key_documents": {
+        "issuer": "issuer-key-retired-inside-window.json",
+        "party": [
+          "vendor.json",
+          "partner.json"
+        ]
+      }
+    },
+    {
+      "name": "party-key-retired-before-receipt",
+      "file": "party-key-retired-before-receipt.json",
+      "expect": "invalid",
+      "description": "The vendor's key is retired with not_after 2026-08-01T00:00:00Z, before the Receipt's timestamp. A trigger's own timestamp is not signed, but it signs receipt_id, which did not exist before the Receipt's signed timestamp, so the key could not have made it while valid.",
+      "breaks": "trigger[https://vendor.example/.well-known/vsl-key.json]",
+      "key_documents": {
+        "issuer": "issuer.json",
+        "party": [
+          "vendor-key-retired.json",
+          "partner.json"
+        ]
+      }
     }
   ],
   "key_documents": [

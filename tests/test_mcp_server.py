@@ -662,3 +662,97 @@ def test_the_cli_mcp_subcommand_runs_the_server(monkeypatch):
     monkeypatch.setattr(srv, "main", lambda argv=None: seen.setdefault("argv", argv))
     rc = cli.main(["mcp", "--key-id", "https://example.org/k"])
     assert rc == 0 and seen["argv"] == ["--key-id", "https://example.org/k"]
+
+
+# --- #28: chain and party key documents per party, as the CLI has them ---------------
+
+_KIT_12 = [v for v in json.loads((KIT / "manifest.json").read_text())["vectors"]
+           if "chain" in v or "key_documents" in v]
+
+
+def _kit_documents(entry, issuer_key_document, party_key_document):
+    spec = entry.get("key_documents")
+    if not spec:
+        return issuer_key_document, party_key_document
+    docs = KIT / "key-documents"
+    return (json.loads((docs / spec["issuer"]).read_text()),
+            [json.loads((docs / name).read_text()) for name in spec.get("party", [])])
+
+
+class TestChainAndWindows:
+    @pytest.mark.parametrize("entry", _KIT_12, ids=lambda v: v["name"])
+    def test_every_chain_and_window_vector(
+        self, verify_only_server, entry, issuer_key_document, party_key_document
+    ):
+        """The kit 1.2 vectors through the tool: same names, same verdicts as the CLI."""
+        issuer, party = _kit_documents(entry, issuer_key_document, party_key_document)
+        arguments = {
+            "receipt": json.loads((KIT / entry["file"]).read_text()),
+            "issuer_keys": issuer,
+            "party_keys": party,
+            "governance_receipt": json.loads((KIT / "governance-receipt.json").read_text()),
+        }
+        if "chain" in entry:
+            arguments["chain"] = [json.loads((KIT / name).read_text()) for name in entry["chain"]]
+        body = payload(call("verify_receipt", arguments))
+        assert body["chain_checked"] is ("chain" in entry)
+        if entry["expect"] == "valid":
+            assert body["verified"] is True, body["failures"]
+        else:
+            assert body["verified"] is False and entry["breaks"] in body["failures"]
+
+    def test_an_unrun_chain_check_is_named_as_unrun(
+        self, verify_only_server, issuer_key_document, party_key_document
+    ):
+        tip = json.loads((KIT / "valid-chain-of-three.json").read_text())
+        body = payload(call("verify_receipt", {"receipt": tip, "issuer_keys": issuer_key_document,
+                                               "party_keys": party_key_document}))
+        assert body["chain_checked"] is False
+        assert body["verified"] is True  # the tip alone; the flag says the chain was not followed
+
+    def test_an_empty_chain_is_still_a_chain(self, verify_only_server, issuer_key_document, party_key_document):
+        tip = json.loads((KIT / "valid-chain-of-three.json").read_text())
+        body = payload(call("verify_receipt", {"receipt": tip, "issuer_keys": issuer_key_document,
+                                               "party_keys": party_key_document, "chain": []}))
+        assert body["chain_checked"] is True and body["verified"] is False
+        assert any(f.startswith("chain.link[1 ") for f in body["failures"])
+
+    def test_party_keys_may_be_one_document_per_party(self, verify_only_server, settled_receipt):
+        docs = KIT / "key-documents"
+        body = payload(call("verify_receipt", {
+            "receipt": settled_receipt,
+            "issuer_keys": json.loads((docs / "issuer.json").read_text()),
+            "party_keys": [json.loads((docs / "vendor.json").read_text()),
+                           json.loads((docs / "partner.json").read_text())],
+        }))
+        assert body["verified"] is True, body["failures"]
+
+    def test_a_key_id_two_party_documents_claim_is_refused(self, verify_only_server, settled_receipt):
+        docs = KIT / "key-documents"
+        vendor = json.loads((docs / "vendor.json").read_text())
+        result = call("verify_receipt", {
+            "receipt": settled_receipt,
+            "issuer_keys": json.loads((docs / "issuer.json").read_text()),
+            "party_keys": [vendor, vendor],
+        })
+        assert result["isError"] is True
+        assert "exactly one document" in result["content"][0]["text"]
+
+    def test_one_key_in_both_roles_is_refused(self, verify_only_server, settled_receipt):
+        issuer = json.loads((KIT / "key-documents" / "issuer.json").read_text())
+        result = call("verify_receipt", {"receipt": settled_receipt, "issuer_keys": issuer,
+                                         "party_keys": issuer})
+        assert result["isError"] is True and "one role" in result["content"][0]["text"]
+
+    @pytest.mark.parametrize("chain", ["receipts/", [1, 2], {"receipt": {}}])
+    def test_a_malformed_chain_is_a_sentence_not_a_traceback(
+        self, verify_only_server, settled_receipt, issuer_key_document, chain
+    ):
+        result = call("verify_receipt", {"receipt": settled_receipt, "issuer_keys": issuer_key_document,
+                                         "chain": chain})
+        assert result["isError"] is True
+        assert "`chain` must be an array of Receipt objects" in result["content"][0]["text"]
+
+    def test_the_tool_does_not_take_a_location_for_the_chain(self):
+        schema = next(t for t in mcp_server.TOOLS if t["name"] == "verify_receipt")["inputSchema"]
+        assert schema["properties"]["chain"]["items"] == {"type": "object"}
