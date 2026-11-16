@@ -130,12 +130,22 @@ def load_private_key(path: Path) -> ec.EllipticCurvePrivateKey:
     return key
 
 
-def key_document(key, key_id: str) -> dict[str, Any]:
+def key_document(key, key_id: str, *, not_before: str | None = None) -> dict[str, Any]:
     """
     The document a party publishes at their ``key_id``.
 
-    Shaped like the issuer's published key set so one verifier reads both.
+    Shaped like the issuer's published key set so one verifier reads both,
+    window included: ``not_before`` is when the key was made (now, unless
+    given) and ``not_after`` is null while the key is in use. A verifier fails
+    a trigger whose key's ``not_after`` is at or before the Receipt's
+    ``timestamp``, so setting it when the key is retired keeps every earlier
+    trigger verifying and stops the key from authorizing anything newer.
     """
+    if not_before is None:
+        from datetime import datetime, timezone
+
+        not_before = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    parse_instant(not_before)  # the Z form a verifier requires, or ValueError
     return {
         "issuer": key_id,
         "keys": [
@@ -145,6 +155,8 @@ def key_document(key, key_id: str) -> dict[str, Any]:
                 "alg": "ES256",
                 "public_key_pem": public_key_pem(key),
                 "status": "active",
+                "not_before": not_before,
+                "not_after": None,
             }
         ],
     }

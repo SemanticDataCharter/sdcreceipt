@@ -1,6 +1,6 @@
 # Design note: `verify` follows the chain and checks key windows
 
-*Status: **approved 2026-11-16; #26, #27, #28 and #30 implemented on `dev`** (`init` #29 open). Check names and chain rules aligned on
+*Status: **approved 2026-11-16; #26 to #30 implemented on `dev`.** Check names and chain rules aligned on
 2026-11-16 with SDCStudio's conformance kit 1.2 (SDCStudio#985; the issuer side is released and deployed), whose README sections
 "Chains" and "Key windows" are normative where this note and the kit differ. Target: `sdcreceipt` 4.4.0 (new
 behaviour, no format change). Closes two of the limits `verify` prints today under "Not covered by this result",

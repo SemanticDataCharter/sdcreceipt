@@ -25,6 +25,10 @@ reference model (see README, Versioning).
   (an empty array is still a chain), `party_keys` takes one document or an array, assembled with `add_document`, and
   the result adds `chain_checked`. The tool calls `verify_chain()`, so it and the CLI cannot disagree.
 
+- **`init` writes the key's window into the party key document (#29).** `not_before` is when the key was made and
+  `not_after` is null, so the party rule in #27 has a window to read for keys made with this tool. README: how a
+  party changes keys (a new `key_id`, the old key `retired` with `not_after` set, kept published).
+
 ### Changed
 - MCP `verify_receipt` refuses a key_id given in both the issuer and a party document, as the CLI has since 4.3.3.
 - A Receipt signed by a key outside the window its issuer published, which verified before, now fails. That is the

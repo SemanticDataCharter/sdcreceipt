@@ -213,6 +213,15 @@ That writes a private key (mode `0600`) and a key document, and tells you the
 exact URL the document must be reachable at. Publishing one JSON file is the
 whole onboarding requirement.
 
+The key document states the key's window: `not_before` is when `init` made it, and `not_after` is null while you
+use it. A verifier fails any trigger whose key's `not_after` is at or before the Receipt's `timestamp`.
+
+**Changing keys.** Run `init` again with a new `key_id` (a new URL, for example `.../vsl-key-2.json`) and give the
+new `key_id` for new settlements. In the old document, set the old key's `status` to `retired` and `not_after` to
+the moment you stopped using it, and **keep it published**: Receipts you triggered before then still verify against
+it, and nothing newer can. Never remove a key that has triggered a settlement. If the private key leaked, set
+`status` to `revoked` instead: every trigger it made then fails, whatever its window says.
+
 Then, when you are sent a Receipt to authorize:
 
 ```bash

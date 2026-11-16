@@ -313,3 +313,49 @@ class TestCommandLine:
         (held / "broken.json").write_text("{not json")
         with pytest.raises(SystemExit, match="not valid JSON"):
             cli.main(base + ["--chain", str(held)])
+
+
+# --- #29: `init` writes the window a party's triggers are judged by --------------------
+
+
+class TestInitWritesAWindow:
+    def test_the_document_states_not_before_and_an_open_not_after(self, keys):
+        from datetime import datetime, timedelta, timezone
+
+        from sdcreceipt.party import key_document
+        from sdcreceipt.verify import parse_instant
+
+        entry = key_document(keys[VENDOR], VENDOR)["keys"][0]
+        assert entry["not_after"] is None
+        made = parse_instant(entry["not_before"])
+        assert abs(datetime.now(timezone.utc) - made) < timedelta(minutes=1)
+        assert load_key_set(key_document(keys[VENDOR], VENDOR)).window(VENDOR)["not_after"] is None
+
+    def test_a_given_not_before_must_be_the_z_form(self, keys):
+        from sdcreceipt.party import key_document
+
+        assert key_document(keys[VENDOR], VENDOR, not_before="2026-01-01T00:00:00Z")["keys"][0][
+            "not_before"] == "2026-01-01T00:00:00Z"
+        with pytest.raises(ValueError):
+            key_document(keys[VENDOR], VENDOR, not_before="2026-01-01")
+
+    def test_the_cli_writes_it(self, tmp_path, capsys):
+        rc = cli.main(["init", "--key-id", VENDOR, "--out", str(tmp_path / "vendor.pem")])
+        assert rc == 0
+        document = json.loads((tmp_path / "vendor-key-document.json").read_text())
+        assert document["keys"][0]["not_before"].endswith("Z")
+        assert document["keys"][0]["not_after"] is None
+
+    def test_retiring_the_key_keeps_earlier_triggers_and_refuses_later_ones(self, keys, chain):
+        """What a party does on rotation: set not_after; Receipts before it still verify."""
+        from sdcreceipt.party import key_document
+
+        document = key_document(keys[VENDOR], VENDOR, not_before="2026-09-01T00:00:00Z")
+        document["keys"][0].update(status="retired", not_after="2026-10-02T00:00:00Z")
+        party = KeySet()
+        party.add_document(load_key_set(document), "vendor")
+        party.add_document(load_key_set(_key_doc([_entry(keys[PARTNER], PARTNER)])), "partner")
+        head, middle, tip = chain  # 10-01, 10-02, 10-03
+        assert verify(head, issuer_keys=_issuer_keys(keys), party_keys=party).ok
+        for later in (middle, tip):
+            assert f"trigger[{VENDOR}]" in _failed(verify(later, issuer_keys=_issuer_keys(keys), party_keys=party))
