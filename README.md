@@ -129,9 +129,30 @@ The roles come from your command line, never from the Receipt, and a key_id that
 Since 4.3.3 the old `--keys` flag is refused: it pooled every document, which let a party's own document supply
 an issuer key (GHSA-gwhr-82j5-883w).
 
-After the checks, `verify` lists what VERIFIED does not cover: trigger timestamps are not signed, key validity
-windows are not compared with the Receipt's time, a chain link (`previous_hash`) is not followed, and the payload
-and governance Receipt are checked only if you pass them.
+**Key windows.** The issuer's key document publishes `not_before` and `not_after` for every key it has used. Each
+issuer signature must fall inside its key's window, `not_before <= timestamp < not_after`, compared with the
+Receipt's own signed `timestamp`. A `retired` key inside its window still verifies, so a rotation never breaks the
+Receipts a key signed; a `revoked` key fails whatever its window says. A party key whose `not_after` is at or
+before the Receipt's `timestamp` fails its trigger. A window bound not written as RFC 3339 UTC ending in `Z` refuses
+the document. Since 4.4.0, always on.
+
+**Chains.** A Receipt's `previous_hash` names the Receipt before it. Give the folder of earlier Receipts you hold
+with `--chain`, and `verify` follows `previous_hash` back to the head and runs every check on every Receipt on the
+way:
+
+```bash
+sdcreceipt verify receipt.json --issuer-keys sdcstudio-signing-keys.json \
+    --party-keys vendor-keys.json --party-keys partner-keys.json --chain receipts/
+```
+
+Earlier Receipts are found by the hash `verify` computes, never the one a file records, and are never fetched.
+Checks on earlier Receipts are prefixed `chain.link[<n> <first 8 of previous_hash>…]`, and the walk ends with
+`chain.head`. A missing link, two different files with one hash, or an earlier Receipt that was never fully
+triggered means NOT VERIFIED (exit 1). The names follow the VSL conformance kit 1.2.
+
+After the checks, `verify` lists what VERIFIED does not cover: trigger timestamps are not signed (so a party key's
+`not_before` is not judged), the chain is not followed without `--chain`, and the payload and governance Receipt
+are checked only if you pass them, for the Receipt named.
 
 Every check is reported, not just the first failure:
 

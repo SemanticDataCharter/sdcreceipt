@@ -6,6 +6,25 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+### Added
+- **`verify --chain DIR` follows `previous_hash` (#26).** Give the folder of earlier Receipts you hold (or one file)
+  and every Receipt back to the head runs the full procedure. Held Receipts are found by recomputed hash, never the
+  recorded one, and are never fetched. Each join checks `previous_hash` and that the earlier signed `timestamp` is not
+  after the later one. A link not held, two different documents with one hash, or more than 10,000 links fails;
+  so does an earlier Receipt that was never fully triggered. Check names follow the VSL conformance kit 1.2:
+  `chain.link[<n> <first 8 of previous_hash>…] <check>` and `chain.head`. Library: `verify_chain()`. `--chain` that
+  names nothing is a usage error (exit 2).
+- **Key validity windows are compared with the Receipt's `timestamp` (#27).** `KeySet` keeps each key's
+  `not_before`/`not_after`. An issuer signature outside `not_before <= timestamp < not_after` fails on that signature;
+  a party key whose `not_after` is at or before the Receipt's `timestamp` fails its trigger. `retired` inside its
+  window passes; `revoked` fails as before. A bound not in RFC 3339 UTC `Z` form refuses the key document. Always on.
+  These were two of the limits `verify` printed under "Not covered by this result" (Lee, 4.3.x review, F-03 and F-11
+  to F-13); the NOTE lines now say only what remains.
+
+### Changed
+- A Receipt signed by a key outside the window its issuer published, which verified before, now fails. That is the
+  window the issuer itself states; nothing about the Receipt format changes.
+
 ### Tests
 - The conformance kit is now 1.1, from SDCStudio: 17 vectors, including `issuer-signature-by-a-party-key` (F-01), and 5
   key-document cases (F-01, F-02), run here through the real command line. The new vector verifies on 4.3.2 with the old

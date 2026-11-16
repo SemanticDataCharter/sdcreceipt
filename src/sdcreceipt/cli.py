@@ -5,7 +5,7 @@
 """
 Command line interface.
 
-    sdcreceipt verify  receipt.json --issuer-keys issuer.json --party-keys party.json
+    sdcreceipt verify  receipt.json --issuer-keys issuer.json --party-keys party.json [--chain DIR]
     sdcreceipt init    --key-id https://vendor.example/.well-known/vsl-key.json
     sdcreceipt settle  payload.xml --party <id> --party <id>
     sdcreceipt trigger receipt.json --key party.pem --key-id <id>
@@ -50,7 +50,7 @@ from sdcreceipt.issue import (
     split_response,
 )
 from sdcreceipt.party import KeySet
-from sdcreceipt.verify import verify
+from sdcreceipt.verify import verify, verify_chain
 
 
 def _load_json(path: Path, what: str) -> dict:
@@ -118,6 +118,16 @@ def cmd_verify(args) -> int:
             file=sys.stderr,
         )
         return 2
+    chain_files = None
+    if getattr(args, "chain", None):
+        chain_files = _chain_files(Path(args.chain))
+        if chain_files is None:
+            print(
+                f"error: --chain {args.chain} is neither a directory nor a file. Give the folder "
+                "of earlier Receipts you hold, or one Receipt.",
+                file=sys.stderr,
+            )
+            return 2
     receipt = _load_receipt(Path(args.receipt))
 
     # ★ The roles come from the command line, never from the Receipt. Before
@@ -145,14 +155,23 @@ def cmd_verify(args) -> int:
     )
     payload = Path(args.payload).read_bytes() if args.payload else None
 
-    result = verify(
-        receipt,
+    evidence = dict(
         issuer_keys=issuer_keys,
         party_keys=party_keys,
         schema=schema,
         governance_receipt=governance,
         payload=payload,
     )
+    if chain_files is None:
+        result = verify(receipt, **evidence)
+    else:
+        # ★ Earlier Receipts are parameters, like keys: read from what the
+        # operator holds, never fetched from the issuer or from anywhere a
+        # Receipt names.
+        held = [_load_json(path, "receipt") for path in chain_files]
+        held = [split_response(doc)[0] if isinstance(doc, dict) else doc for doc in held]
+        held = [doc for doc, path in zip(held, chain_files) if path.resolve() != Path(args.receipt).resolve()]
+        result = verify_chain(receipt, held=held, **evidence)
 
     print(result)
     _print_not_checked(receipt, args)
@@ -164,24 +183,38 @@ def cmd_verify(args) -> int:
     return 1
 
 
+def _chain_files(path: Path) -> list[Path] | None:
+    """The Receipt files ``--chain`` names: every ``*.json`` in a directory, or the one file. None if neither."""
+    if path.is_dir():
+        return sorted(p for p in path.glob("*.json") if p.is_file())
+    if path.is_file():
+        return [path]
+    return None
+
+
 def _print_not_checked(receipt, args) -> None:
     """
     Say what VERIFIED does not cover, so nobody reads it as more than it is.
 
     ★ Lee's 4.3.x review (F-03, F-11, F-12, F-13): trigger timestamps are not
-    signed, key validity windows are not compared with the Receipt's time,
-    the chain link is not followed, and the Receipt's own record of the
-    payload's validation is signed but was never shown. None of these
-    changes the exit code; each is a limit a reader should see.
+    signed, and the Receipt's own record of the payload's validation is
+    signed but was never shown. Since 4.4.0 key windows are compared with the
+    Receipt's time and ``--chain`` follows ``previous_hash``; what remains is
+    a party key's ``not_before``, and the chain when ``--chain`` is not given.
+    None of these changes the exit code; each is a limit a reader should see.
     """
     if not isinstance(receipt, dict):
         return
     notes = [
         "trigger timestamps are not signed; they are advisory",
-        "key validity windows (not_before, not_after) are not compared with the Receipt's timestamp",
+        "a party key's not_before is not judged: trigger timestamps are not signed, so nothing "
+        "says how late a trigger came",
     ]
     if receipt.get("previous_hash"):
-        notes.append("previous_hash is not followed; the earlier Receipt in the chain was not checked")
+        if getattr(args, "chain", None):
+            notes.append("governance and payload evidence apply to this Receipt only, not to the earlier Receipts in the chain")
+        else:
+            notes.append("previous_hash is not followed; the earlier Receipts in the chain were not checked (--chain)")
     if not args.governance:
         notes.append("no governance Receipt given, so the verdict's binding was not checked (--governance)")
     if not args.payload:
@@ -485,6 +518,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--schema", help="the published JSON Schema")
     p.add_argument("--governance", help="the governance Receipt, if held")
     p.add_argument("--payload", help="the payload, if held")
+    p.add_argument(
+        "--chain",
+        metavar="DIR",
+        help="earlier Receipts held (a directory of *.json, or one file); follows previous_hash "
+        "back to the head and verifies every Receipt on the way",
+    )
     p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser("init", help="generate a keypair and the document to publish")

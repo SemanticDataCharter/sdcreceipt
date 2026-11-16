@@ -21,7 +21,9 @@ the forger's key and verify against it. Do not add an overload that fetches.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from sdcreceipt.canonical import canonicalize_bytes
@@ -288,6 +290,81 @@ def _revoked(keys: dict[str, Any], key_id: str) -> bool:
     return bool(revoked(key_id)) if callable(revoked) else False
 
 
+#: The time form the Receipt's ``timestamp`` and a key document's window use.
+_UTC_INSTANT = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z")
+
+
+def parse_instant(value: Any) -> datetime:
+    """
+    An RFC 3339 UTC time ending in ``Z``, as a datetime, or ``ValueError``.
+
+    Only the ``Z`` form is accepted. Offsets would compare correctly once
+    parsed, but two implementations that disagree on parsing them would
+    disagree on a window, so the form is fixed rather than interpreted.
+    """
+    if not isinstance(value, str) or not _UTC_INSTANT.fullmatch(value):
+        raise ValueError(f"{value!r} is not an RFC 3339 UTC time ending in Z")
+    return datetime.fromisoformat(value[:-1] + "+00:00")
+
+
+def _window(keys: dict[str, Any], key_id: str) -> dict[str, Any] | None:
+    """The validity window the key document published for this key, if the key set kept one."""
+    window = getattr(keys, "window", None)
+    return window(key_id) if callable(window) else None
+
+
+def _issuer_window_reason(window: dict[str, Any] | None, timestamp: Any) -> str:
+    """
+    "" when the Receipt's ``timestamp`` lies in the issuer key's window, else why not.
+
+    ★ Half-open, ``not_before <= timestamp < not_after``, because a retired
+    key's ``not_after`` is its successor's ``not_before``: one instant belongs
+    to one key. A null bound is no bound, and a key with no window stated has
+    nothing to check. Status is not consulted here: ``retired`` inside its
+    window passes, so rotating a key never breaks the Receipts it signed, and
+    ``revoked`` has already failed, whatever its window says, because a
+    compromised key can write any timestamp it likes.
+    """
+    if not window:
+        return ""
+    try:
+        at = parse_instant(timestamp)
+        not_before = window.get("not_before")
+        not_after = window.get("not_after")
+        if not_before is not None and at < parse_instant(not_before):
+            return f"timestamp {timestamp} is before the key's not_before {not_before}"
+        if not_after is not None and at >= parse_instant(not_after):
+            return f"timestamp {timestamp} is not before the key's not_after {not_after}"
+    except ValueError as exc:
+        return f"cannot compare the key's window with the timestamp: {exc}"
+    return ""
+
+
+def _party_window_reason(window: dict[str, Any] | None, timestamp: Any) -> str:
+    """
+    "" unless the party key was retired or revoked by the Receipt's ``timestamp``.
+
+    A trigger's own timestamp is not signed, so it proves nothing. What a
+    trigger does sign is ``receipt_id``, which did not exist before the
+    Receipt's signed ``timestamp``; a key whose ``not_after`` is at or before
+    that instant could not have made it while valid. ``not_before`` is not
+    judged: nothing signed says how late a trigger came.
+    """
+    not_after = (window or {}).get("not_after")
+    if not_after is None:
+        return ""
+    try:
+        if parse_instant(not_after) <= parse_instant(timestamp):
+            return (
+                f"the party key's not_after {not_after} is not after the Receipt's "
+                f"timestamp {timestamp}; a trigger signs receipt_id, which did not "
+                "exist before that time"
+            )
+    except ValueError as exc:
+        return f"cannot compare the party key's window with the timestamp: {exc}"
+    return ""
+
+
 def verify(
     receipt: dict[str, Any],
     *,
@@ -429,6 +506,10 @@ def verify(
             reason = _verify_mldsa65(key, digest, signature.get("sig", ""))
         else:
             reason = _verify_ecdsa(key, digest, signature.get("sig", ""), prehashed=True)
+        if not reason:
+            # ★ A genuine signature made outside the window the issuer itself
+            # published for that key is not the issuer's Receipt.
+            reason = _issuer_window_reason(_window(issuer_keys, key_id), receipt.get("timestamp"))
         result.record(label, not reason, reason or f"verifies over receipt_hash ({alg})")
 
     if not receipt.get("signatures"):
@@ -477,6 +558,13 @@ def verify(
             reason = _verify_ecdsa(
                 key, message, trig.get("signature", ""), prehashed=False
             )
+            if not reason:
+                window_reason = _party_window_reason(
+                    _window(party_keys, key_id), receipt.get("timestamp")
+                )
+                if window_reason:
+                    result.record(label, False, window_reason)
+                    continue
             result.record(
                 label,
                 not reason,
@@ -558,3 +646,199 @@ def verify(
         )
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Chains: following previous_hash through Receipts the caller holds.
+# ---------------------------------------------------------------------------
+
+#: How many earlier Receipts ``verify_chain`` follows before giving up. A
+#: verifier's input is chosen by whoever wants it to fail badly.
+CHAIN_CEILING = 10_000
+
+
+def chain_link_label(n: int, previous_hash: Any) -> str:
+    """The prefix for link ``n`` back from the Receipt verified: ``chain.link[1 3fa9c1d2…]``."""
+    return f"chain.link[{n} {str(previous_hash)[:8]}\u2026]"
+
+
+def content_hash(receipt: dict[str, Any]) -> str:
+    """The recomputed ``receipt_hash``: SHA-256 over the canonical content, whatever the Receipt records."""
+    return hashlib.sha256(canonical_content(receipt)).hexdigest()
+
+
+def _content_hash_or_none(document: Any) -> str | None:
+    """The recomputed hash, or None for a held document that is not a canonicalizable Receipt."""
+    if not isinstance(document, dict) or _shape_problems(document):
+        return None
+    try:
+        return content_hash(document)
+    except Exception:
+        return None
+
+
+def verify_chain(
+    receipt: dict[str, Any],
+    *,
+    held: list[dict[str, Any]],
+    issuer_keys: dict[str, Any],
+    party_keys: dict[str, Any] | None = None,
+    schema: dict[str, Any] | None = None,
+    governance_receipt: dict[str, Any] | None = None,
+    payload: bytes | None = None,
+    ceiling: int = CHAIN_CEILING,
+) -> Result:
+    """
+    Verify ``receipt`` and every earlier Receipt its ``previous_hash`` reaches.
+
+    ``held`` are earlier Receipts the caller already has. Like keys they are
+    parameters and never fetched: the caller decides what evidence is in play
+    before anything is read, so a Receipt cannot nominate the Receipt it is
+    judged against. An empty ``held`` is still a chain, with nothing held.
+
+    ★ **Held Receipts are found by recomputed hash, never the recorded one**,
+    so a document cannot claim a place in the chain by writing a
+    ``receipt_hash`` it does not have. When no held Receipt hashes to a
+    ``previous_hash``, a held one that *records* that hash is still examined,
+    so the failure says which link was edited rather than only that the chain
+    stops; it always fails, on its own ``receipt_hash`` and on the join.
+
+    The walk ends at a Receipt whose ``previous_hash`` is null
+    (``chain.head``). Every earlier link runs the full procedure with the same
+    keys (and their windows) and schema; governance and payload evidence apply
+    to ``receipt`` only. An earlier link that was never fully triggered
+    therefore fails: VERIFIED over a chain means every settlement in it
+    completed. Each earlier link's checks are recorded with the prefix
+    :func:`chain_link_label` gives, and each join adds two:
+
+    * ``<prefix> previous_hash``: the later Receipt names a held Receipt;
+    * ``<prefix> timestamp``: the earlier signed ``timestamp`` is not after
+      the later one.
+
+    The chain cannot be established, recorded on the bare prefix, when two
+    different held documents hash to the named value (they can differ only in
+    what the hash excludes, ``signatures`` and ``settlement.triggers``), when
+    the named Receipt is not held, or past ``ceiling`` links. When it is not
+    found but other held Receipts are left over, the join fails on
+    ``previous_hash`` instead: the caller supplied an earlier Receipt and this
+    one names a different one.
+
+    The names match the VSL conformance kit 1.2 ("Chains").
+    """
+    result = verify(
+        receipt,
+        issuer_keys=issuer_keys,
+        party_keys=party_keys,
+        schema=schema,
+        governance_receipt=governance_receipt,
+        payload=payload,
+    )
+    if any(c.name in ("shape", "version") for c in result.failures):
+        # Nothing about this document can be read as a chain link.
+        return result
+
+    held = list(held)
+    by_hash: dict[str, list[dict[str, Any]]] = {}
+    for document in held:
+        recomputed = _content_hash_or_none(document)
+        if recomputed is None:
+            continue  # cannot be canonicalized, so nothing can name it
+        documents = by_hash.setdefault(recomputed, [])
+        if document not in documents:  # byte-identical copies are one document
+            documents.append(document)
+
+    used: list[dict[str, Any]] = []
+    later, n = receipt, 0
+    while True:
+        previous_hash = later.get("previous_hash")
+        if previous_hash is None:
+            result.record(
+                "chain.head",
+                True,
+                "this Receipt is the head"
+                if n == 0
+                else f"reached the head after {n} earlier Receipt(s)",
+            )
+            return result
+
+        n += 1
+        prefix = chain_link_label(n, previous_hash)
+        if n > ceiling:
+            result.record(prefix, False, f"more than {ceiling} links; the chain cannot be established")
+            return result
+
+        candidates = by_hash.get(previous_hash, []) if isinstance(previous_hash, str) else []
+        if len(candidates) > 1:
+            result.record(
+                prefix,
+                False,
+                f"{len(candidates)} different held documents hash to {previous_hash}. They can "
+                "differ only in signatures or settlement.triggers, and the chain cannot say "
+                "which is the Receipt",
+            )
+            return result
+
+        if candidates:
+            earlier = candidates[0]
+            result.record(f"{prefix} previous_hash", True, "names a held Receipt by its recomputed hash")
+        else:
+            left_over = [
+                d for d in held
+                if isinstance(d, dict) and d is not receipt and d != receipt
+                and not any(d is u for u in used)
+            ]
+            claiming = [d for d in left_over if d.get("receipt_hash") == previous_hash]
+            if claiming:
+                earlier = claiming[0]
+                recomputed = _content_hash_or_none(earlier)
+                result.record(
+                    f"{prefix} previous_hash",
+                    False,
+                    f"names {previous_hash}; a held Receipt records that receipt_hash, but its "
+                    + (
+                        f"content hashes to {recomputed}, so it was edited after it was hashed"
+                        if recomputed
+                        else "content cannot be read as a Receipt"
+                    ),
+                )
+            elif left_over:
+                hashes = sorted(h or "(not a Receipt)" for h in map(_content_hash_or_none, left_over))
+                result.record(
+                    f"{prefix} previous_hash",
+                    False,
+                    f"names {previous_hash}, which no held Receipt hashes to; the held Receipts "
+                    f"left over hash to {hashes}",
+                )
+                return result
+            else:
+                result.record(
+                    prefix,
+                    False,
+                    f"names {previous_hash}, which is not held; the chain cannot be established "
+                    "without it",
+                )
+                return result
+
+        if any(earlier is u for u in used):
+            result.record(prefix, False, "the chain returns to a Receipt already on it")
+            return result
+        used.append(earlier)
+
+        link = verify(earlier, issuer_keys=issuer_keys, party_keys=party_keys, schema=schema)
+        for check in link.checks:
+            result.record(f"{prefix} {check.name}", check.passed, check.detail)
+        if any(c.name in ("shape", "version") for c in link.failures):
+            return result
+
+        try:
+            in_order = parse_instant(earlier.get("timestamp")) <= parse_instant(later.get("timestamp"))
+            detail = (
+                f"{earlier.get('timestamp')} is not after {later.get('timestamp')}"
+                if in_order
+                else f"the earlier Receipt's timestamp {earlier.get('timestamp')} is after the "
+                f"later one's {later.get('timestamp')}"
+            )
+        except ValueError as exc:
+            in_order, detail = False, f"cannot compare timestamps: {exc}"
+        result.record(f"{prefix} timestamp", in_order, detail)
+        later = earlier
