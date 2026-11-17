@@ -6,6 +6,25 @@ reference model (see README, Versioning).
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-11-17
+
+`condition`: the Settlement Condition projection, so that every party, the issuer and the holder derive the same
+`condition_hash` from one Settlement Condition record (Business Documents library, model `bbkd5gtq1lc3h8l829enszax`).
+No Receipt, trigger or key-document format change; `verify` is unchanged.
+
+### Added
+- `sdcreceipt.condition`: the projection `sdc-settlement-condition/1`, specified in the module docstring so that
+  it can be reimplemented from the text. The terms of the Settlement Condition cluster are keyed by member ct_id:
+  each leaf's value is taken lexically, a quantity as `{value, units}`, an Exceptional Value as `{"ev": name}`.
+  Labels, validity times and placeholders are left out. The model and cluster ct_ids are bound in. The result is
+  RFC 8785, then SHA-256. A DOCTYPE, a missing or repeated cluster, and a leaf with neither a value nor an
+  Exceptional Value are refused. It does not validate the record; validate it first with sdcvalidator.
+- `sdcreceipt condition RECORD.xml --cluster CT_ID [--out FILE] [--canonical]` prints the hash, and writes the
+  projection to settle with (`settle --condition-file FILE`).
+- MCP tool `condition_hash` (local, no network).
+- `tests/condition/`: a vector built from a record that validates against the published model, plus a test that
+  two escrows give two hashes. The vector moves into the VSL conformance kit at its next version.
+
 ## [4.4.0] - 2026-11-16
 
 `verify` follows the chain and checks key validity windows: two of the limits it printed under "Not covered by this

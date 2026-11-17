@@ -213,6 +213,23 @@ TOOLS = [
             "required": ["payload", "current_state", "target_state", "condition", "parties"],
         },
     },
+    {
+        "name": "condition_hash",
+        "description": (
+            "Project a Settlement Condition record (a governed record, as XML) to sdc-settlement-condition/1 and "
+            "return the projection, its RFC 8785 bytes and condition_hash. Local: no network. Does not validate the "
+            "record; validate it against its published model first. Settle with the projection as the condition and "
+            "the issuer derives the same hash."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "record": {"type": "string", "description": "The Settlement Condition governed record, as XML."},
+                "cluster": {"type": "string", "description": "The Settlement Condition cluster's ct_id in the model."},
+            },
+            "required": ["record", "cluster"],
+        },
+    },
 ]
 
 
@@ -426,7 +443,20 @@ def _handle_settle(args: dict[str, Any]) -> Any:
     return result
 
 
+def _handle_condition_hash(args: dict[str, Any]) -> Any:
+    from .condition import ConditionError, condition_hash, project
+
+    if not isinstance(args, dict) or not isinstance(args.get("record"), str) or not isinstance(args.get("cluster"), str):
+        raise PartyError("`record` (XML text) and `cluster` (a ct_id) are required strings.")
+    try:
+        digest, canon = condition_hash(args["record"], args["cluster"])
+        return {"condition_hash": digest, "canonical": canon.decode("utf-8"), "projection": project(args["record"], args["cluster"])}
+    except ConditionError as exc:
+        raise PartyError(str(exc)) from exc
+
+
 TOOL_HANDLERS = {
+    "condition_hash": _handle_condition_hash,
     "verify_receipt": _handle_verify_receipt,
     "sign_trigger": _handle_sign_trigger,
     "settle": _handle_settle,
