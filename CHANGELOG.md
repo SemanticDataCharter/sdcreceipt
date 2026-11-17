@@ -15,7 +15,7 @@ No Receipt, trigger or key-document format change; `verify` is unchanged.
 ### Added
 - `sdcreceipt.condition`: the projection `sdc-settlement-condition/1`, specified in the module docstring so that
   it can be reimplemented from the text. The terms of the Settlement Condition cluster are keyed by member ct_id:
-  each leaf's value is taken lexically, a quantity as `{value, units}`, an Exceptional Value as `{"ev": name}`.
+  each leaf's value is taken lexically, a quantity as `{value, units}`, an Exceptional Value as `{"ev": name}`, and an Exceptional Value beside a value as `{"ev", "value"}` (if only the EV were kept, the value would drop out of the hash).
   Labels, validity times and placeholders are left out. The model and cluster ct_ids are bound in. The result is
   RFC 8785, then SHA-256. A DOCTYPE, a missing or repeated cluster, and a leaf with neither a value nor an
   Exceptional Value are refused. It does not validate the record; validate it first with sdcvalidator.

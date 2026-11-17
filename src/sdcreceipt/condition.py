@@ -37,7 +37,9 @@ The projection, ``sdc-settlement-condition/1``:
    ``xddouble-value``, ``xdboolean-true``/``xdboolean-false``, or the one
    ``xdtemporal-*`` element present. A quantity is ``{"value", "units"}``, the
    units being the text of ``xdquantity-units/xdstring-value``. A leaf with an
-   Exceptional Value in place of its value is ``{"ev": <ev-name>}``.
+   Exceptional Value in place of its value is ``{"ev": <ev-name>}``; with one
+   beside its value, ``{"ev": <ev-name>, "value": <value>}``, so the value is
+   never dropped from the hash.
    Everything else a leaf carries (label, validity times, accuracy, the
    placeholder flags) is not part of the agreed terms and is left out.
 5. The result is ``{"projection": "sdc-settlement-condition/1", "model":
@@ -103,10 +105,7 @@ def _ev(el):
     return None
 
 
-def _leaf_value(el) -> Any:
-    ev = _ev(el)
-    if ev is not None:
-        return {"ev": ev.find("ev-name").text or ""}
+def _value(el) -> Any:
     plain = {(_split(c.tag)[1]): c for c in el if not _sdc(c)}
     if "xdquantity-value" in plain:
         units = plain.get("xdquantity-units")
@@ -119,6 +118,22 @@ def _leaf_value(el) -> Any:
     if len(temporal) == 1:
         return plain[temporal[0]].text or ""
     return None
+
+
+def _leaf_value(el) -> Any:
+    """A leaf's value; ``{"ev": name}`` for an Exceptional Value in its place; both when it stands beside a value.
+
+    The reference model allows an Exceptional Value beside a value as well as in place of one. Both are hashed: a
+    projection that kept only the Exceptional Value would drop the value from the hash, so an escrow ID with an
+    Exceptional Value beside it would hash the same for every escrow.
+    """
+    ev, value = _ev(el), _value(el)
+    if ev is None:
+        return value
+    out = {"ev": ev.find("ev-name").text or ""}
+    if value is not None:
+        out["value"] = value
+    return out
 
 
 def _project(cluster) -> dict:

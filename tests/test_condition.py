@@ -119,3 +119,12 @@ def test_the_mcp_tool_returns_the_same_hash_and_refuses_cleanly():
     assert json.loads(r["result"]["content"][0]["text"])["condition_hash"] == expected["condition_hash"]
     r = _handle_request({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "condition_hash", "arguments": {"record": xml, "cluster": "z" * 24}}})
     assert r["result"]["isError"] is True
+
+
+def test_an_exceptional_value_beside_a_value_keeps_the_value_in_the_hash():
+    """Found writing the paper for Lee: keeping only the EV would let one hash cover every escrow."""
+    beside = lambda escrow: (VECTOR / "settlement-condition-ledger-account.xml").read_text().replace(
+        "<xdstring-value>42</xdstring-value>", f"<sdc4:ASKU><ev-name>Asked but Unknown</ev-name></sdc4:ASKU><xdstring-value>{escrow}</xdstring-value>")
+    a = project(beside("42"), "eid1kx2nx04u3okbo18vqrks")
+    assert a["terms"]["gel80vtu8pcs59cl7liqfemz"]["j2bn2htdkisk9lluiehmihfv"] == {"ev": "Asked but Unknown", "value": "42"}
+    assert condition_hash(beside("42"), "eid1kx2nx04u3okbo18vqrks")[0] != condition_hash(beside("43"), "eid1kx2nx04u3okbo18vqrks")[0]
