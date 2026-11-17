@@ -490,6 +490,33 @@ def cmd_settle(args) -> int:
     return 0
 
 
+def cmd_condition(args) -> int:
+    """Project a Settlement Condition record and print its condition_hash (sdcreceipt.condition)."""
+    from sdcreceipt.condition import ConditionError, condition_hash, project
+
+    try:
+        with open(args.record, "rb") as f:
+            data = f.read()
+        digest, canon = condition_hash(data, args.cluster)
+    except (OSError, ConditionError) as e:
+        print(f"sdcreceipt: {e}", file=sys.stderr)
+        return 2
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(project(data, args.cluster), f, ensure_ascii=False, indent=2)
+            f.write("\n")
+    if args.canonical:
+        sys.stdout.write(canon.decode("utf-8") + "\n")
+    print(digest)
+    print(
+        "Hash only a record that validates against its published model (sdcvalidator); "
+        "this command does not validate it. Settle with the projection as the condition "
+        "(--out FILE, then settle --condition-file FILE) and the issuer derives the same hash.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sdcreceipt",
@@ -561,6 +588,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--key-id", required=True, help="your key_id, as listed on the settlement")
     p.add_argument("--submit", metavar="URL", help="POST it rather than printing it")
     p.set_defaults(func=cmd_trigger)
+
+    p = sub.add_parser(
+        "condition",
+        help="project a Settlement Condition record (XML) and print its condition_hash",
+    )
+    p.add_argument("record", help="the Settlement Condition governed record, as XML")
+    p.add_argument("--cluster", required=True, metavar="CT_ID", help="the Settlement Condition cluster's ct_id in the model")
+    p.add_argument("--out", help="write the projection (JSON) here, to settle with as --condition-file")
+    p.add_argument("--canonical", action="store_true", help="also print the RFC 8785 bytes that are hashed")
+    p.set_defaults(func=cmd_condition)
 
     # ★ The MCP registry launches the package by its bare name (`uvx sdcreceipt`), which is this CLI, so the
     # registry entry passes `mcp` as its one positional argument and lands here. Everything after `mcp` goes to the

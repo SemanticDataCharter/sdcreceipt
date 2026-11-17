@@ -1,0 +1,7 @@
+{
+  "description": "A Settlement Condition record (Business Documents library, model bbkd5gtq1lc3h8l829enszax, published 17 November 2026) that validates against its published schema: Release to Payee from escrow 42 of a ledger account on eip155:1. The projection sdc-settlement-condition/1, its RFC 8785 bytes, and condition_hash.",
+  "model": "bbkd5gtq1lc3h8l829enszax",
+  "cluster": "eid1kx2nx04u3okbo18vqrks",
+  "canonical": "{\"condition\":\"eid1kx2nx04u3okbo18vqrks\",\"model\":\"bbkd5gtq1lc3h8l829enszax\",\"projection\":\"sdc-settlement-condition/1\",\"terms\":{\"fmc46pasrw73xfsv35h05v6l\":{\"e5evmcjd09thw4vu5invma2o\":{\"xcn8r67fg7soty17homzok44\":\"Halvorsen Marine AS\"}},\"gel80vtu8pcs59cl7liqfemz\":{\"a5fhm4zx670i59zj1fsg1miq\":\"eip155:1\",\"cux1dpckbro7vk4oxducga2f\":\"eip155:1:0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed\",\"gcgg8mgvo6bsws42zfgvgrur\":\"Ledger Account\",\"j2bn2htdkisk9lluiehmihfv\":\"42\"},\"i1lt3uxbkjk88wnt8tkdvkea\":\"3f9c2a7be1d04c58a6f0b2d917e4c3a5\",\"j7gqxvhmv9gj8vm1waato9b3\":{\"units\":\"USD\",\"value\":\"1250.00\"},\"qhbsicwu780bhq59577m1xrl\":\"SC-2026-0001\",\"w6uoidlgys2fl20x4pbwqmp4\":\"Release to Payee\",\"w8lvi1o5y0fzjmeur3g5mwfc\":\"2026-12-31T23:59:59Z\"}}",
+  "condition_hash": "b468c16b5d5dec5f623c832c48f7fe5b92c9773b0e336a8fd91b0710d1c57540"
+}
