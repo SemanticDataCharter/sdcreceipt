@@ -63,6 +63,22 @@ anyone parsing output.
 That is the whole surface. This is a client, not a product, and its value is in
 being small enough to read.
 
+### A Settlement Condition as the release condition
+
+When the condition is a Settlement Condition record (the Business Documents library), the holder of what is released
+(an escrow contract, a title registry, a bank) pins `condition_hash` when it takes custody. Every party has to derive
+the same hash from the record, so the projection is fixed (`sdc-settlement-condition/1`, specified in
+`sdcreceipt/condition.py`):
+
+```bash
+sdcvalidate dm-bbkd5gtq1lc3h8l829enszax.xsd settlement-condition.xml   # validate first (sdcvalidator)
+sdcreceipt condition settlement-condition.xml --cluster eid1kx2nx04u3okbo18vqrks --out condition.json
+sdcreceipt settle payload.xml --condition-file condition.json --party ... --party ...
+```
+
+`condition` prints the hash and does not validate. The published model's schema is what requires the nonce, the
+lapse and the identifiers of the target's kind, and refuses a target a holder could read two ways.
+
 ## Try it without reading anything
 
 ```bash
