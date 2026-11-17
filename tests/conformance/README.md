@@ -1,7 +1,7 @@
-# VSL conformance kit (1.2)
+# VSL conformance kit (1.3)
 
 *The issuer builds this kit and copies it here, unchanged, so anyone can check a verifier against it without an
-account. `sdcreceipt`'s own suite runs every vector and every key-document case (`tests/test_conformance.py`).*
+account. `sdcreceipt`'s own suite runs every vector, every key-document case and every condition case (`tests/test_conformance.py`).*
 
 Everything needed to build a Settlement Receipt verifier **and prove it is
 correct**, without asking us and without trusting us.
@@ -50,7 +50,8 @@ below).
 the difference between "my code rejected it" and "my code rejected it for the
 reason that matters," and only the second means the bug is caught.
 
-You are conformant when all 27 vectors and all 5 key-document cases (below) behave as documented. Our own kit build refuses
+You are conformant when all 27 vectors and all 5 key-document cases (below) behave as documented, and, if
+your tool derives `condition_hash` from a Settlement Condition record, all 10 condition cases (kit 1.3, below). Our own kit build refuses
 to write a vector that does not, so the file you have has been held to the
 same standard.
 
@@ -169,6 +170,59 @@ key's `not_before` and `not_after`, and use them instead of `keys.json`.
 Neither addition changes the Receipt format: `previous_hash` and `timestamp` are inside `receipt_hash` in 1.0
 and 1.1.
 
+### Settlement Conditions: `conditions` (kit 1.3)
+
+A Receipt commits to its release condition by `condition_hash`, SHA-256 over RFC 8785 of the condition. When
+the condition is a **Settlement Condition record** (an instance of the published Settlement Condition model,
+`dm-bbkd5gtq1lc3h8l829enszax`), the condition hashed is the record's canonical projection,
+`sdc-settlement-condition/1`:
+
+```json
+{"projection": "sdc-settlement-condition/1", "model": "<model ct_id>", "condition": "<cluster ct_id>",
+ "terms": {"<ct_id>": "<value>", "<cluster ct_id>": {...}, "<quantity ct_id>": {"value": "...", "units": "..."}}}
+```
+
+- **Only the terms inside the named cluster.** Labels, prefixes, `instance_id`, audit and everything outside
+  the cluster are not hashed.
+- **Keys are ct_ids**: the `ms-<ct_id>` element name, compared by namespace, never by prefix. An adapter holding
+  one member stands for it; a member holding members is an object; anything else is a leaf.
+- **Values are lexical**, exactly as written. `1250.0` and `1250.00` are different conditions.
+- **An Exceptional Value is projected as `{"ev": "<ev-name>"}`**, and beside a value as
+  `{"ev": "<ev-name>", "value": "<value>"}`, never the Exceptional Value alone.
+- **Refuse** a DOCTYPE, a record whose root is not an SDC4 model, a cluster absent or present twice, and a leaf
+  with neither a value nor an Exceptional Value.
+- **Validate the record against its model first.** The projection does not validate; a schema check is what
+  enforces the per-kind rules (an XSD 1.1 validator; an XSD 1.0 validator ignores assertions).
+
+```
+for each case in manifest.conditions:
+    record = <case.file>
+    if case.expect == "refused":  your_projection(record, case.cluster) must refuse
+    else:
+        projection = your_projection(record, case.cluster)
+        projection must equal <case.projection>      # as JSON values
+        SHA-256(RFC 8785(projection)) must equal case.condition_hash
+        if case.same_as:       the hash equals that case's
+        if case.differs_from:  the hash differs from that case's
+```
+
+| Case | Expect | Why |
+|---|---|---|
+| `ledger-account` | hash | The base: a Release to Payee on a Ledger Account, escrow 42. |
+| `other-escrow` | hash, differs | Escrow 43. A Receipt for one escrow cannot release another. |
+| `other-prefix` | hash, same | Another namespace prefix. Names are compared by namespace. |
+| `outside-the-condition` | hash, same | A new `instance_id` and audit. Only the cluster is hashed. |
+| `lexical-amount` | hash, differs | `1250.0` for `1250.00`. Values are lexical. |
+| `exceptional-value-beside-value` | hash, differs | Keeping only the Exceptional Value would let one hash cover every escrow. |
+| `doctype` | refused | An entity could put text into a term the parties never saw. |
+| `cluster-absent` | refused | Never an empty projection. |
+| `cluster-twice` | refused | Which one was agreed is not for the tool to choose. |
+| `empty-leaf` | refused | Not hashed as nothing. |
+
+The issuer's build checks every case two ways: `sdcreceipt` (4.5.0 and later, `sdcreceipt condition`) projects
+the record, and the issuer's `compute_condition_hash` must give the same hash over that projection. These cases do
+not change when the keys are regenerated.
+
 ### The two that catch the most implementations
 
 **Canonicalization.** RFC 8785 requires ECMAScript `Number::toString`. Python's
@@ -205,6 +259,7 @@ operator believes the check ran.
 | `keys.json` | Public keys for the vectors. Vectors only, used nowhere else. `party_keys` includes the vendor's second key (`#k2`). |
 | `key-documents/` | Published-shape key documents for the key-document cases and the key-window vectors (status, `not_before`, `not_after`). |
 | `chain/` | Held earlier Receipts for the chain vectors. |
+| `conditions/` | Settlement Condition records and their expected projections, for the condition cases. |
 | `governance-receipt.json` | The governance Receipt the vectors bind to. |
 | `payload.xml` | The payload the vectors commit to, for the optional payload check. |
 

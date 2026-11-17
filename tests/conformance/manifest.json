@@ -1,5 +1,5 @@
 {
-  "version": "1.2",
+  "version": "1.3",
   "vectors": [
     {
       "name": "valid-settled",
@@ -314,6 +314,95 @@
           "file": "issuer.json"
         }
       ]
+    }
+  ],
+  "conditions": [
+    {
+      "name": "ledger-account",
+      "file": "conditions/settlement-condition-ledger-account.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "hash",
+      "description": "A Release to Payee on a Ledger Account, escrow 42. The base case: project the Settlement Condition cluster and hash RFC 8785 of the projection.",
+      "projection": "conditions/ledger-account.projection.json",
+      "condition_hash": "b468c16b5d5dec5f623c832c48f7fe5b92c9773b0e336a8fd91b0710d1c57540"
+    },
+    {
+      "name": "other-escrow",
+      "file": "conditions/other-escrow.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "hash",
+      "description": "The same terms for escrow 43. A different hash: a Receipt for escrow 42 cannot release escrow 43 (threat T1).",
+      "projection": "conditions/other-escrow.projection.json",
+      "condition_hash": "82121f7282e6c321074be261823b271e8ec15761ab5a109089bce4c889e88d92",
+      "differs_from": "ledger-account"
+    },
+    {
+      "name": "other-prefix",
+      "file": "conditions/other-prefix.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "hash",
+      "description": "The same record written with another namespace prefix. The same hash: names are compared by namespace, not prefix.",
+      "projection": "conditions/other-prefix.projection.json",
+      "condition_hash": "b468c16b5d5dec5f623c832c48f7fe5b92c9773b0e336a8fd91b0710d1c57540",
+      "same_as": "ledger-account"
+    },
+    {
+      "name": "outside-the-condition",
+      "file": "conditions/outside-the-condition.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "hash",
+      "description": "A new instance_id and a different audit. The same hash: only the terms inside the named cluster are hashed.",
+      "projection": "conditions/outside-the-condition.projection.json",
+      "condition_hash": "b468c16b5d5dec5f623c832c48f7fe5b92c9773b0e336a8fd91b0710d1c57540",
+      "same_as": "ledger-account"
+    },
+    {
+      "name": "lexical-amount",
+      "file": "conditions/lexical-amount.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "hash",
+      "description": "1250.0 where the base has 1250.00. A different hash: values are lexical, because the parties hash the record they agreed, not a number someone normalised.",
+      "projection": "conditions/lexical-amount.projection.json",
+      "condition_hash": "b357d06cd4a6cba878eaa1763c6902045ba75601bfe9b7559fcb4a1fe7b55ee3",
+      "differs_from": "ledger-account"
+    },
+    {
+      "name": "exceptional-value-beside-value",
+      "file": "conditions/exceptional-value-beside-value.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "hash",
+      "description": "An Exceptional Value beside the escrow's value. Both are projected, {\"ev\", \"value\"}: keeping only the Exceptional Value would let one hash cover every escrow.",
+      "projection": "conditions/exceptional-value-beside-value.projection.json",
+      "condition_hash": "2b594f0f76222d54e987cabcbbeb96e40276ec08c53eb43997f3253e1a696999",
+      "differs_from": "ledger-account"
+    },
+    {
+      "name": "doctype",
+      "file": "conditions/doctype.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "refused",
+      "description": "A DOCTYPE with an entity. Refused: an entity could put text into a term the parties never saw."
+    },
+    {
+      "name": "cluster-absent",
+      "file": "conditions/cluster-absent.xml",
+      "cluster": "zzzzzzzzzzzzzzzzzzzzzzzz",
+      "expect": "refused",
+      "description": "The cluster named is not in the record. Refused, never an empty projection."
+    },
+    {
+      "name": "cluster-twice",
+      "file": "conditions/cluster-twice.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "refused",
+      "description": "The cluster appears twice. Refused: which one was agreed is not for the tool to choose."
+    },
+    {
+      "name": "empty-leaf",
+      "file": "conditions/empty-leaf.xml",
+      "cluster": "eid1kx2nx04u3okbo18vqrks",
+      "expect": "refused",
+      "description": "A term with neither a value nor an Exceptional Value. Refused rather than hashed as nothing."
     }
   ]
 }

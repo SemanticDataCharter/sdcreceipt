@@ -4,7 +4,7 @@
     {
       "key_id": "did:web:partner.example",
       "alg": "ES256",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEv7swEcOh73tNutYgLk+8ndHmUnnZ\nFQtaAQ12Ycg4DnKGQR8dhGJA07f//LZqz5rLjPiLI3oDyd7WTAoB37hZ4w==\n-----END PUBLIC KEY-----\n",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0GnQVBuYsb2jq2sPYsfuMZav1zDB\n0blwQdH39GPEYf1NnSbkd59tr7SLqlEc/1XQbsXFOyKGYI/lKO02ft7VnA==\n-----END PUBLIC KEY-----\n",
       "status": "active"
     }
   ]

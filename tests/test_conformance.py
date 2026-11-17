@@ -98,11 +98,12 @@ def _run_vector(kit, entry):
 
 
 def test_the_kit_is_present(kit):
-    assert kit["manifest"]["version"] == "1.2"
+    assert kit["manifest"]["version"] == "1.3"
     assert len(kit["manifest"]["vectors"]) == 27
     assert len(kit["manifest"]["key_documents"]) == 5
     assert sum("chain" in v for v in kit["manifest"]["vectors"]) == 6
     assert sum("key_documents" in v for v in kit["manifest"]["vectors"]) == 4
+    assert len(kit["manifest"]["conditions"]) == 10
 
 
 @pytest.mark.parametrize("case", json.loads((KIT / "manifest.json").read_text())["key_documents"],
@@ -381,3 +382,35 @@ def test_every_chain_and_window_vector_through_the_command_line(entry, tmp_path,
         assert rc == 0, out
     else:
         assert rc == 1 and entry["breaks"] in failed, out
+
+
+# ---------------------------------------------------------------- kit 1.3: Settlement Condition cases
+CONDITIONS = json.loads((KIT / "manifest.json").read_text())["conditions"]
+
+
+@pytest.mark.parametrize("case", CONDITIONS, ids=lambda c: c["name"])
+def test_every_condition_case_behaves_as_the_manifest_says(case, capsys):
+    """
+    Through the real command line: a hash case prints the case's condition_hash and writes the case's
+    projection; a refused case exits 2 with nothing on stdout.
+    """
+    from sdcreceipt import cli
+
+    rc = cli.main(["condition", str(KIT / case["file"]), "--cluster", case["cluster"]])
+    out = capsys.readouterr().out.strip()
+    if case["expect"] == "refused":
+        assert rc == 2 and out == ""
+        return
+    assert rc == 0 and out == case["condition_hash"]
+    from sdcreceipt.condition import project
+
+    assert project((KIT / case["file"]).read_bytes(), case["cluster"]) == json.loads((KIT / case["projection"]).read_text())
+
+
+def test_the_condition_relations_hold():
+    by = {c["name"]: c.get("condition_hash") for c in CONDITIONS}
+    for c in CONDITIONS:
+        if "same_as" in c:
+            assert by[c["name"]] == by[c["same_as"]], c["name"]
+        if "differs_from" in c:
+            assert by[c["name"]] != by[c["differs_from"]], c["name"]

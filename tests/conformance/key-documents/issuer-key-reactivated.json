@@ -4,7 +4,7 @@
     {
       "key_id": "sdcstudio-signing-key-v1",
       "alg": "ES256",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEN+irDFJr09gtjisNdlO4qD/T18Ca\nm+MNH5RWAESdRgJXU+1n0zE/71q9aEDBye+bNXMfMbgpCFotPgvCCcxfgQ==\n-----END PUBLIC KEY-----\n",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEOeiniuYtqks1t6tPwHLrNlBgxAjJ\nt3hYykAJxPYUsVymoUfbM0irM2zNGjRaAEczifg0J3VKvOPYDtmVY9nihQ==\n-----END PUBLIC KEY-----\n",
       "status": "active"
     }
   ]
