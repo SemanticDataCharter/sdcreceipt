@@ -4,13 +4,13 @@
     {
       "key_id": "https://vendor.example/.well-known/vsl-key.json",
       "alg": "ES256",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWQs0jtipvHWtDZ9QDL0goY3tg2mb\n2/jWBZUZwhcbguknaNFcxA5XgCkxp0Ohhn4S0yCL7wcK4tHx6Ued6wMYOg==\n-----END PUBLIC KEY-----\n",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDVXU1lHz/GyV2ZrjVXZXzibtZvi9\nxNgPSa6eBlGqOSGwsSGZFc1/gSWffS3dd7R61L/aoCuCBxg4g4xv6nfDKA==\n-----END PUBLIC KEY-----\n",
       "status": "active"
     },
     {
       "key_id": "https://vendor.example/.well-known/vsl-key.json#k2",
       "alg": "ES256",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEuRnWwW5e1O+EabaF4qG1qDqCnsKb\nCUerkLkx+/kRU8PRQO6PUJsaw5S0X4W6w9NuRzHMPjXRebLT0Ff/eiQnNQ==\n-----END PUBLIC KEY-----\n",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKy0YMZKOzQ3sydO3u2zDNIDLzZSM\nbz0u9YSEmbxq6bB0piqO/TxE5DDwVAkMYkyqGZqxyDwh5A1cnfV3HhsJKw==\n-----END PUBLIC KEY-----\n",
       "status": "active"
     }
   ]
