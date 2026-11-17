@@ -4,13 +4,13 @@
     {
       "key_id": "https://vendor.example/.well-known/vsl-key.json",
       "alg": "ES256",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWQs0jtipvHWtDZ9QDL0goY3tg2mb\n2/jWBZUZwhcbguknaNFcxA5XgCkxp0Ohhn4S0yCL7wcK4tHx6Ued6wMYOg==\n-----END PUBLIC KEY-----\n",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDVXU1lHz/GyV2ZrjVXZXzibtZvi9\nxNgPSa6eBlGqOSGwsSGZFc1/gSWffS3dd7R61L/aoCuCBxg4g4xv6nfDKA==\n-----END PUBLIC KEY-----\n",
       "status": "active"
     },
     {
       "key_id": "sdcstudio-signing-key-v1",
       "alg": "ES256",
-      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEiFECK3mVgxQgMeufrWJSoH2mx+Nh\niuM6wuAE0fb+B6zNwmfzk62T4U88AIjmwM/7CfE0Z3ZDuQd/SfqNZwL4uw==\n-----END PUBLIC KEY-----\n",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEx8QTAbELvTTyqce4o9uJXpDlICU4\nMRECFqqNuxjV51HLTtZYDjyvfUmTsLn0RBsjhdcT6cAm3F+p9Vgx8gMamw==\n-----END PUBLIC KEY-----\n",
       "status": "active"
     }
   ]

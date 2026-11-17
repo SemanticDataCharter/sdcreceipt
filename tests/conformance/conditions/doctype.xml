@@ -1,0 +1,104 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE x [<!ENTITY e "y">]>
+<sdc4:dm-bbkd5gtq1lc3h8l829enszax xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:sdc4="https://semanticdatacharter.com/ns/sdc4/" xsi:schemaLocation="https://semanticdatacharter.com/ns/sdc4/ https://semanticdatacharter.com/dmlib/dm-bbkd5gtq1lc3h8l829enszax.xsd">
+
+  <dm-label>Settlement Condition</dm-label>
+  <dm-language>en-US</dm-language>
+  <dm-encoding>utf-8</dm-encoding>
+  <creation_timestamp>2026-11-17T10:00:00Z</creation_timestamp>
+  <instance_id>m22pss4tw5nnowir3pa2d6o2</instance_id>
+  <instance_version>1</instance_version>
+  <sdc4:ms-d4sep6eyp63rfslrfbpfdbkq>
+    <label>Settlement Condition Governed Record</label>
+  <sdc4:ms-eid1kx2nx04u3okbo18vqrks>
+    <label>Settlement Condition</label>
+  <sdc4:ms-fmc46pasrw73xfsv35h05v6l>
+    <label>Payee Party</label>
+  <sdc4:ms-e5evmcjd09thw4vu5invma2o>
+    <label>Party</label>
+  <sdc4:ms-mpweekufi4296o2qdi0wfd9a>
+    <sdc4:ms-xcn8r67fg7soty17homzok44>
+      <label>Organization Name</label>
+      <xdstring-value>Halvorsen Marine AS</xdstring-value>
+      </sdc4:ms-xcn8r67fg7soty17homzok44>
+  </sdc4:ms-mpweekufi4296o2qdi0wfd9a>
+  </sdc4:ms-e5evmcjd09thw4vu5invma2o>
+  </sdc4:ms-fmc46pasrw73xfsv35h05v6l>
+  <sdc4:ms-gel80vtu8pcs59cl7liqfemz>
+    <label>Settlement Target</label>
+  <sdc4:ms-agj9te9txytrohoedwnfq9bx>
+    <sdc4:ms-j2bn2htdkisk9lluiehmihfv>
+      <label>Escrow ID</label>
+      <xdstring-value>42</xdstring-value>
+      </sdc4:ms-j2bn2htdkisk9lluiehmihfv>
+  </sdc4:ms-agj9te9txytrohoedwnfq9bx>
+  <sdc4:ms-oi1jlk8bait0yvqanrqca70h>
+    <sdc4:ms-cux1dpckbro7vk4oxducga2f>
+      <label>Ledger Account ID</label>
+      <xdstring-value>eip155:1:0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed</xdstring-value>
+      </sdc4:ms-cux1dpckbro7vk4oxducga2f>
+  </sdc4:ms-oi1jlk8bait0yvqanrqca70h>
+  <sdc4:ms-vq8o20o6f0f64i8aociazn3v>
+    <sdc4:ms-a5fhm4zx670i59zj1fsg1miq>
+      <label>Ledger Network ID</label>
+      <xdstring-value>eip155:1</xdstring-value>
+      </sdc4:ms-a5fhm4zx670i59zj1fsg1miq>
+  </sdc4:ms-vq8o20o6f0f64i8aociazn3v>
+  <sdc4:ms-a7xt6qc47wqfevtpbdvxie1v>
+    <sdc4:ms-gcgg8mgvo6bsws42zfgvgrur>
+      <label>Settlement Target Kind</label>
+      <xdtoken-value>Ledger Account</xdtoken-value>
+      </sdc4:ms-gcgg8mgvo6bsws42zfgvgrur>
+  </sdc4:ms-a7xt6qc47wqfevtpbdvxie1v>
+  </sdc4:ms-gel80vtu8pcs59cl7liqfemz>
+  <sdc4:ms-wtnu8cf9is03xyns0he2m6si>
+    <sdc4:ms-i1lt3uxbkjk88wnt8tkdvkea>
+      <label>Condition Nonce</label>
+      <xdstring-value>3f9c2a7be1d04c58a6f0b2d917e4c3a5</xdstring-value>
+      </sdc4:ms-i1lt3uxbkjk88wnt8tkdvkea>
+  </sdc4:ms-wtnu8cf9is03xyns0he2m6si>
+  <sdc4:ms-bsqiksv4c7st6f4g3atommpe>
+    <sdc4:ms-qhbsicwu780bhq59577m1xrl>
+      <label>Settlement Condition ID</label>
+      <xdstring-value>SC-2026-0001</xdstring-value>
+      </sdc4:ms-qhbsicwu780bhq59577m1xrl>
+  </sdc4:ms-bsqiksv4c7st6f4g3atommpe>
+  <sdc4:ms-fs7v006hdi8wn5hxhw9na5n2>
+    <sdc4:ms-w6uoidlgys2fl20x4pbwqmp4>
+      <label>Release Action</label>
+      <xdtoken-value>Release to Payee</xdtoken-value>
+      </sdc4:ms-w6uoidlgys2fl20x4pbwqmp4>
+  </sdc4:ms-fs7v006hdi8wn5hxhw9na5n2>
+  <sdc4:ms-htjnbgn45t5deu951c75p6vo>
+    <sdc4:ms-j7gqxvhmv9gj8vm1waato9b3>
+      <label>Settlement Amount</label>
+      <xdquantity-value>1250.00</xdquantity-value>
+      <xdquantity-units>
+        <label>Currency</label>
+        <xdstring-value>USD</xdstring-value>
+      </xdquantity-units>
+    </sdc4:ms-j7gqxvhmv9gj8vm1waato9b3>
+  </sdc4:ms-htjnbgn45t5deu951c75p6vo>
+  <sdc4:ms-gg06vu20w62k6a51eesw01e1>
+    <sdc4:ms-w8lvi1o5y0fzjmeur3g5mwfc>
+      <label>Condition Lapse</label>
+      <xdtemporal-datetime>2026-12-31T23:59:59Z</xdtemporal-datetime>
+    </sdc4:ms-w8lvi1o5y0fzjmeur3g5mwfc>
+  </sdc4:ms-gg06vu20w62k6a51eesw01e1>
+  </sdc4:ms-eid1kx2nx04u3okbo18vqrks>
+  </sdc4:ms-d4sep6eyp63rfslrfbpfdbkq>
+  <sdc4:ms-vjsb1sede0row0dzz9hobson>
+    <label>Business Document Audit</label>
+    <system-id>
+      <label>Business Document Translator Identifier</label>
+      <xdstring-value>_PH_</xdstring-value>
+    </system-id>
+    <system-user>
+      <label>Business Document Translator User</label>
+    </system-user>
+    <location>
+      <label>Business Document Source</label>
+    </location>
+    <timestamp>2024-01-01T00:00:00</timestamp>
+  </sdc4:ms-vjsb1sede0row0dzz9hobson>
+</sdc4:dm-bbkd5gtq1lc3h8l829enszax>

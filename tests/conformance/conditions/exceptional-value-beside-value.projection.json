@@ -1,0 +1,29 @@
+{
+  "projection": "sdc-settlement-condition/1",
+  "model": "bbkd5gtq1lc3h8l829enszax",
+  "condition": "eid1kx2nx04u3okbo18vqrks",
+  "terms": {
+    "fmc46pasrw73xfsv35h05v6l": {
+      "e5evmcjd09thw4vu5invma2o": {
+        "xcn8r67fg7soty17homzok44": "Halvorsen Marine AS"
+      }
+    },
+    "gel80vtu8pcs59cl7liqfemz": {
+      "j2bn2htdkisk9lluiehmihfv": {
+        "ev": "Asked but Unknown",
+        "value": "42"
+      },
+      "cux1dpckbro7vk4oxducga2f": "eip155:1:0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+      "a5fhm4zx670i59zj1fsg1miq": "eip155:1",
+      "gcgg8mgvo6bsws42zfgvgrur": "Ledger Account"
+    },
+    "i1lt3uxbkjk88wnt8tkdvkea": "3f9c2a7be1d04c58a6f0b2d917e4c3a5",
+    "qhbsicwu780bhq59577m1xrl": "SC-2026-0001",
+    "w6uoidlgys2fl20x4pbwqmp4": "Release to Payee",
+    "j7gqxvhmv9gj8vm1waato9b3": {
+      "value": "1250.00",
+      "units": "USD"
+    },
+    "w8lvi1o5y0fzjmeur3g5mwfc": "2026-12-31T23:59:59Z"
+  }
+}
